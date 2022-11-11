@@ -1,0 +1,127 @@
+Testing Entry: 8000h
+With OMNIDISK DEBUG extensions size is 3K
+ROM CP/M BIOS only size is < 2K
+
+
+'B' BAUDSEL		;SET BAUD RATE
+'C' CALL		;CALL MEMORY WITH RETURN
+'D' DISP		;DISPLAY MEMORY
+'E' ENTR		;EXAMINE AND ENTER INTO MEMORY
+'F' FILL		;FILL MEMORY
+'H' INTEL		;LOAD INTEL HEX FORMAT
+'I' INPORT		;INPUT FROM SPECIFIED PORT
+'J' JUMP		;JUMP TO ADDRESS
+'M' MOVE		;MOVE MEMORY BLOCK
+'O' OUTPORT		;OUTPUT TO SPECIFIED PORT
+'S' SEARCH		;16 BIT MASKED SEARCH
+'T' MEMTEST		;TEST MEMORY
+'V' CMPBLK		;COMPARE MEMORY BLOCKS
+'X' XMODEM		;BINARY LOAD
+'Y' RELIO		;RELOCAT I/O RAM
+':' TBLSET2		;SET UP FOR SECOND CMD TABLE
+	'<'	GETOS		;GET OS SYSTEM
+	'>'	PUTOS		;PUT OS SYSTEM
+	'B'	BOOT		;TRY TOO BOOT FLOPPY ON UNIT#
+	'C'	CREATE	;CREATE BOOT BLOCK [#RECORDS]
+	'D'	DMA		;DMA ADDRESS
+	'E'	ESTATUS	;EXTENDED STATUS (CLEARS GEN$STATUS)
+	'F'	FORMAT	;FORMAT/VERIFY FLOPPY DISK
+	'G'	GSTATUS	;GEN$STATUS
+	'H'	GETDPH	;READ TRACK 4 FOR DPH
+	'I'	ALINPUT	;INPUT ALLOCATION
+	'L'	LOG$PHY	;0=LOGICAL I/O, >0 #PHYSICAL RECORDS
+	'M'	MAP		;MAP LUN TO DEVICE#
+	'O'	ALOUTPT	;OUTPUT ALLOCATION
+	'P'	PARMD	;SHOW CURRENT PARAMETERS
+	'R'	READ	;READ SECTOR FROM DISKETTE
+	'S'	SEEK	;FORCE PHYSICAL SEEK
+	'T'	TRACE	;TOGGLE OMNI TRACE
+	'U'	UNIT	;DEFAULT UNIT#
+	'V'	VERIFY	;VERIFY FLOPPY DISK
+	'W' WRITE	;WRITE SECTOR TO DISKETTE
+	'X'	XMODE	;SET SECTOR WRITE$MODE (0,1,2)
+	'Z'	RESET	;RESET OMNIDISK CONTROLLER TO DEFAULTS
+
+*** PRIMARY COMMAND TABLE ***
+
+JUMP		address
+CALL		address  (RET on stack)
+INTEL		Intel hex [OFFSET]
+XMODEM		Binary file load. Use DMA command for load address
+DISP		start end
+ENTR		start  (cr = done, - = Back)
+FILL		start end value
+MOVE		start size dest
+
+SEARCH		start end value mask
+CMPBLK		start end block
+
+RELIO		address
+INPUT		port#
+OUTPORT		port# value
+
+MEMTEST		start end
+
+*** SECOND COMMAND TABLE ***
+
+EXTENDED DISK COMMANDS
+
+DEFAULTS:
+UNIT		14H  5" DRIVE 0
+DMA:		00100h
+TRACK		0000h
+SECTOR:		00h
+
+BOOT	read boot record from current UNIT#
+<	[#records]			Read OS tracks, #=1 to FE. 1=128 BYTES,2=256
+>	[#records]			Write OS tracks,#=1 to FE. 1=128 BYTES,2=256
+                        Note: Use CURRENT DMA as base for Read/Write.
+ESTATUS
+GSTATUS
+PARAMATER DISPLAY
+LOG$PHY					Sets how READ/WRITE: 0=LOGICAL I/O, >0 #PHYSICAL RECORDS
+						(Sets the 'R' parameter)
+TRACE	toggle
+DMA		address
+UNIT	[drive#]		LUN=00-0F, PHY=10-1C
+MAP		L#,P#			Define map: LUN=00-0F, PHY=10-1C
+MAP		logical#		Display PHYSICAL assigned to LOGICAL device
+MAP	?					Display all LUN -> PHY mapping
+FORMAT	format#			00-14h See FDREL table, FF=Read list of format's supported
+VERIFY	format#			00-14h See FDREL table
+SEEK	track#			Forced seek to TRACK#
+READ	[track,sector]
+		[,DMA,UNIT#]] 	Read Logical/Physical sector
+WRITE	[track,sector
+		[,DMA,UNIT#]]	Write Logical/Physical sector
+XMODE					WRITE$MODE: 0=NORMAL, 1=DIR, 2=RAND
+
+Parameters use blank (' ') or comma (',') as separator, terminate with <CR>
+All values are in HEX.
+
+				FDREL TABLE
+
+Fmt Fmt    Type    Dens    Sec/    Bytes/    Tracks    Notes
+#   Name   8/5"    S/D/Q   Track   Sector              -----------
+00	A      8"      S       26      128       77        Standard 8"
+01	B      8"      S       15      256       77
+02	C      8"      S        8      512       77
+03	D      8"      S        4      1024      77
+04	E      8"        D     26      256       77
+05	F      8"        D     15      512       77
+06	G      8"        D      8      1024      77        W/W Components
+
+07	A       5"     S       16      128       40
+08	B       5"     S       17      128       40
+09	C       5"     S       18      128       40       Xerox
+0A	D       5"     S        8      256       40       Osborne
+0B	E       5"     S       10      256       40
+0C	F       5"     S        4      512       40
+0D	G       5"       D     16      256       40       Heath/NEC
+0E	H       5"       D     17      256       40
+0F	I       5"       D     18      256       40
+10	J       5"       D      8      512       40?      IBM PC/XT - 8 Sector
+11	K       5"       D      9      512       40?      IBM PC/AT - 9 Sector
+12	L       5"       D     10      512       40?
+13	M       5"       D      4      1024      40?
+14	N       5"       D      5      1024      40??
