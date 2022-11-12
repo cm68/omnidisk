@@ -1,0 +1,5022 @@
+	TITLE	'Monitor for Fulcrum MPU-Z by Alex P. Novickis, 2 MAR 86'
+;-----------------------------------------------------------------------------;
+;                                                                             ;
+;                                                                             ;
+;	#     # ####### #     # ####### #######       #    #     #####        ;
+;       ##    # #       #  #  #      #  #    #       #    ##    #     #       ;
+;       # #   # #       #  #  #     #       #       #    # #          #       ;
+;       #  #  # #####   #  #  #    #       #       #       #     #####        ;
+;       #   # # #       #  #  #   #       #       #        #    #             ;
+;       #    ## #       #  #  #  #        #      #         #    #             ;
+;       #     # #######  ## ##  #######   #     #        #####  #######       ;
+;                                                                             ;
+;                                                                             ;
+;	NOTE: this must be assembled with the microsoft(MS) m80.com           ;
+; macro-80 assembler. This was chosen since the MAC/RMAC by digital research  ;
+; (DRI) has eirdway mnemonics for the z80 opcodes as destributed in the	      ;
+; z80.lib macro library.						      ;
+;
+;       If this is intended to run under CP/M for debugging/testing purposes  ;
+; then use the following sequence of CCP commands to effect:                  ;
+;
+;      era errs
+;      put console to file errs
+;      m80 =newz719
+;      l80 /p:0100,newz719,newz719/n/x/y/e
+;      zsid newz719.hex newz719.sym
+;
+; To create a EPROMABLE version, change the link/debug step to:
+;    
+;      l80 /p:0000,newz,n.obj/n/e
+;      <N					; don't relocate now
+;      sid					;
+;      <f0100,4fff,ff				; ff Fill
+;      <en.obj					;
+;      <wn.obj,0100,20ff			; Write image to file n.obj
+;      <g0					; Return to O/S
+;
+; This creates the output file n.obj, a binary image ready for
+;  the burner.
+;
+;-----------------------------------------------------------------------------;
+; NOTE: also change version number in monitor signon message                  ;
+;                                                                             ;
+; Modification history                                                        ;
+; vers Date    Who Description                                                ;
+;-----------------------------------------------------------------------------;
+; 2.00 12Jul85 apn Change over to zilog mnemonics allowing easy use of such   ;
+; 2.01 15Jul85 apn Added code for RTC time read/set                           ;
+; 2.10 20Jul85 apn Completely restructure monitor for tokenized parsing       ;
+; 2.80 01Aug85 apn All parameter passing between scanner, lexical parser is   ;
+;                   now on stack                                              ;
+; 3.00 02Aug85 apn First working version                                      ;
+; 3.05 12Aug85 apn Fixed MPU-Z bug for reading port switch                    ;
+; 3.09 24Aug85 apn CtlS/CtlQ support for all character I/O consoles           ;
+; 3.10 24Aug85 apn Minor parser change to handle no delimeter between token   ;
+;                   and first parameter.                                      ;
+; 3.11 25Aug85 apn Fix initialization routine for 2681                        ;
+; 3.12 26Aug85 apn Add initialization to RAM bank (CPM+ required)             ;
+; 3.13 26Aug85 apn Moved XBUF external to MPU-Z (OmniDisk DMA restriction)    ;
+; 3.14 27Aug85 apn Changed method of disk error recovery/retry                ;
+; 3.15 27Aug85 apn Centronics port initialization fixed                       ;
+; 3.16 27Aug85 apn Changed omni-extended stat error display for disk errors   ;
+; 3.17 28Aug85 apn Integrated simple FILL/CHECK routine for extended ram      ;
+; 3.18 28Aug85 apn Add long fill command for extended ram                     ;
+; 3.19 28Aug85 apn Fix to support OMNIDISK firmware bug                       ;
+; 3.20 28Aug85 apn Abort processing by vector                                 ;
+; 3.21 29Aug85 apn Fixed long fill                                            ;
+; 3.22 29Aug85 apn Fix TMA/OMNIDISK test mode                                 ;
+; 3.23 29Aug85 apn Add routine to dump single char to viox (a cpu life test)  ;
+; 3.24 29Aug85 apn Added terminal mode. VIO-X to ZSIOA to ZSIOB in any        ;
+;                   combination of two, or even all three.                    ;
+; 3.35 29Aug85 apn Abort vector modified for some funtions then can not       ;
+;                   survive an abort at certian times                         ;
+; 3.36 30Aug85 apn Implemented check to see if we are running under an O/S    ;
+; 3.37 30Aug85 apn TMOV (TMA test) shows progress status more intelligently   ;
+; 3.38 30Aug85 apn Abort added to TMOV                                        ;
+; 3.39 30Aug85 apn Fixed bug in Long compare                                  ;
+; 3.40 28Feb86 apn Fixed bug in STIM routine (character input wrong)          ;
+; 3.41 01Mar86 apn Changed character I/O to filter bit 7                      ;
+; 3.42 02Mar86 apn Fixed vio-z clock update for AM/PM mask                    ;
+; 3.43 03Mar86 apn Display of console w/signon                                ;
+; 3.44 03Mar86 apn Added Boot unit, #records command                          ;
+; 3.45 03Mar86 apn Changed reset method of O/D                                ;
+; 3.46 04Mar86 apn Fixed bug in fill, compare, display (Base 0 offset)        ;
+; 3.47 05Mar86 apn Fixed bug in move block               ""  "" ""            ;
+; 3.48 05Mar86 apn Added RD/WR code for O/D                                   ;
+; 3.49 06Mar86 apn Generic O/D error function added                           ;
+; 3.50 06Mar86 apn Boot test function changed to allow #records               ;
+; 3.51 06Mar86 apn .                                                          ;
+;                                                                             ;
+;                                                                             ;
+;                                                                             ;
+;                                                                             ;
+;                                                                             ;
+;                                                                             ;
+;                                                                             ;
+;                                                                             ;
+;                                                                             ;
+;                                                                             ;
+;                                                                             ;
+;-----------------------------------------------------------------------------;
+;
+true	defl -1			; Logical truth equate
+false	defl not true		; Logical false equate
+;
+;
+;  Character logical definitions
+;
+;
+CR	defl	0dh		; Carriage return
+LF	defl	0ah		; Line Feed
+bell	defl	7		; 
+Bkspc	defl	8		; Backspace
+rub	defl	07fh		; Rubout
+RT	defl	0CH		; Right Cursor
+UP	defl	0BH		; Up cursor
+cntl	defl	'@'		; Ascii offset for control codes
+ctlC	defl	'C'-cntl	; Control  -  C (ABORT)
+ctlQ	defl	'Q'-cntl	; Control  -  Q (XON)
+ctlS	defl	'S'-cntl	; Control  -  S (XOFF)
+ctlU	defl	'U'-cntl	; Control  -  U 
+ctlX	defl	'X'-cntl	; Control  -  X (Cancel line)
+ctlW	defl	'W'-cntl	; Control  -  W (Repeat line)
+spc	defl	' '		; Space
+tab	defl	9		; Tab
+Y	defl	'Y'		; Short for YES
+esc	defl	1bh		; Escape
+;
+;-----------------------------------------------------------------------------
+; Misc. other defines
+;
+bnk$port	defl	040h		; port for bank select stuff
+;
+;
+;	-device Variables
+;
+;
+;	port definitions for the 2681 dual serial port controller
+;
+mpuzbase 	defl	20h
+;
+duart		defl	mpuzbase	;base port of 2681
+mra		defl	duart+00h	;port a mode register (read/write)
+sioa$status	defl	duart+01h	;port a status register (read only)
+CSRa		defl	duart+01h	;port a clock select (write only)
+cra		defl	duart+02h	;port a command register (write only)
+sioa$data	defl	duart+03h	;port a data register (read/write)
+IPCR		defl	duart+04h	;input port change register (read only)
+aCR		defl	duart+04h	;aux control register (write only)
+isR		defl	duart+05h	;interrupt status register (read only)
+IMR		defl	duart+05h	;interrupt mask register (write only)
+CTU		defl	duart+06h	;counter/timer upper register (read/write)
+CTL		defl	duart+07h	;counter/timer lower register (read/write)
+mrb		defl	duart+08h	;port B mode register (read/write)
+siob$status	defl	duart+09h	;port B status register (read only)
+Csrb		defl	duart+09h	;port B clock select (write only)
+CRB		defl	duart+0ah	;port B command register (write only)
+siob$data	defl	duart+0Bh	;port B data register (read/write)
+DUainP		defl	duart+0Dh	;duart IP7..IP0 (read only)
+OPCR		defl	duart+0Dh	;output port config register (write only)
+startC		defl	duart+0Eh	;start counter command WhEN read
+setOPB		defl	duart+0Eh	;set output bits command (write only)
+stopC		defl	duart+0Fh	;stop counter command WhEN read
+resOPB		defl	duart+0Fh	;reset output bits command (write only)
+txrdy2681 	defl	4		;transmit ready mask (txrdy)
+rxrdy2681 	defl	1		;recieve ready mask (rxrdy)
+;
+PaRaa		defl	mpuzbase+10h	;mpuz 8255 centronix data port
+PaRaB		defl	mpuzbase+11h	;mpuz 8255 centronix status port
+PaRaC		defl	mpuzbase+12h	;mpuz 8255 centronix STROBE port
+PaRaCTL		defl	mpuzbase+13h	;mpuz 8255 centronix mode port
+;
+;
+;	8259a interrupt controller
+;	used for interupt driven i/o
+;
+;
+inT0		defl	mpuzbase+14h	;a0=0
+inT1		defl	mpuzbase+15h	;a0=1
+;
+;	this register is write-only and takes effect on the next instruction.
+;	this register effects instruction fetches as well as data access.
+;
+EXTaDR	defl	mpuzbase+1Ch	;selectS TOP 8 bits of S-100 aDRS LinES
+;
+pojport	defl	mpuzbase+1dh	; Read only for POJ status
+memctl	defl	mpuzbase+1eh	; Disable ROM/RAM on MPU-Z
+;
+;------------------------------------------------------------------------------
+;
+;     Fulcrum MPU-Z Real Time Clock (RTC)  i/o ports
+;
+cadr	defl	mpuzbase+18h		; Address of digit
+cdata	defl	mpuzbase+19h		; Digit data 
+cstat	defl	mpuzbase+1ch		; Status (ready)
+;
+;------------------------------------------------------------------------------
+;
+;	viox equates
+;
+;
+viox$data	defl	2
+viox$status	defl	3
+viox$xmit$rdy	defl	1
+viox$rcv$rdy	defl	2
+;
+;------------------------------------------------------------------------------
+;
+;	OMNIDISK I/O equates
+; 
+;
+omnidata	defl	0a0h		; data port for omnidisk controller
+omnistat	defl	omnidata+1	; status port
+omni$in		defl	1		; data is ready
+omni$out	defl	4		; Sending is possible/usefull
+;
+;	OMNIDISK command equates
+;
+;
+oc$BOOT	defl	0	;BOOT SYSTEM				numrecs 00-ff
+ob$swrt	defl	1	; write system				numrecs 00-ff
+oc$mode defl	2	;dma/IO mode
+oc$DLDS defl	4	;define logical device set
+oc$unit	defl	9	;select (logical) unit
+oc$TRaK	defl	10	;select track
+oc$reCD	defl	11	;select (logical) reCORD
+oc$DaDR	defl	12	;set dma aDDreSS
+oc$read	defl	13	;read
+oc$WRIT	defl	14	;write
+oc$DFMD	defl	18	;define memory disk
+oc$GENS defl	22	;get general status
+oc$EXTS	Defl	23	;get extended status
+oc$SFDP	defl	28	;set floppy disk parameters
+oc$hDPR	defl	31	;hard disk parms (#hDS, PCOMP, STP R, CTLR TYP)
+oc$hDTB	defl	32	;hard disk tables--DEV SEL, PhYS offset, OS TBL
+;
+oc$FMTF	defl	3	;format floppy track
+oc$GLDS	defl	5	;get logical device set
+oc$FWRT	defl	6       ;force write of modified buffers
+oc$skew	defl	8	;set non-standard skew factor
+oc$MOVM	defl	16	;move block of memory with dma
+oc$SRTY	defl	24	;set counters for (floppy disk) retry logic
+oc$DPBX	defl	25	;get extended DPB (CP/M 3.0)
+oc$GBPB	defl	26	;get MS-DOS "bios parameter block"
+oc$GMCS	defl	27	;get MS-DOS "media change status"
+;
+;
+;------------------------------------------------------------------------------
+; Macros
+;
+genrad	macro	parmn
+	if not nul parmn
+		defb parmn-$
+	endif
+	endm
+
+prev	defl	0		; last entry in command scanner
+
+token	macro	atoken,min,max,e0,e1,e2,e3,e4,e5,e6,e7
+loc1	defl	$
+	dc	atoken
+	defw	prev
+	defb	min,max
+prev	defl	loc1
+
+	genrad	e0
+	genrad	e1
+	genrad	e2
+	genrad	e3
+	genrad	e4
+	genrad	e5
+	genrad	e6
+	genrad	e7
+
+	endm
+;
+;
+;-----------------------------------------------------------------------------
+; Memory space descriptors
+;
+	rbase defl 0000h
+;
+ROMptr	defl	00000h+rbase	; residency of this program is here
+RAMptr	defl	04000h+rbase	; Local ram
+;
+;-----------------------------------------------------------------------------
+;
+;	Local System RAM Allocation
+;
+;-----------------------------------------------------------------------------
+;
+;		dseg
+		org	ramptr		; Ram origin is here
+;
+;
+stacksz::	defs	256		; Why not...
+stack::
+;
+abvec::		defs	2	; Pointer to abort reentry
+ecount::	defs	1	; Counter used for terminal abort sequence chek
+bootpt::	defs	2	; pointer to where boot sector will be loaded
+bd$flg::	defs	1	; boot/dump mode
+diskdrv::	defs	1	; Drive type select byte
+@civec::	defs	1	; Input device vector
+@covec::	defs	1	; Output device vector
+incount::	defs	2	; count of calls to getchar, successful or not
+asave::		defs	1	; A register save area
+dstrbuf::	defs	2	; Address of disk command string buffer
+line::		defs	40	; Line buffer address
+trams::		defs	2
+trame::		defs	2
+ramlen::	defs	2
+patptr::	defs	1
+L0041::		defs	2
+pcount::	defs	2
+mxprms::	defs	1
+par$ct::	defs	1
+mnprms::	defs	1
+hltemp::	defs	2
+oldcnt::	defs	1	; Character count of last line input
+;
+;------------------------------------------------------------------------------
+;
+;	clock stuff
+;
+CURDPTR::	defs	2		;POINTER TO W/I FLDTBL
+CURDTBL::				;CONTENTS OF FLDTBL ENTRY
+CURDCUR::	defs	1		;CURSOR LOCATION OF DIGIT
+CURDCTL::	defs	1		;CLOCK CONTROL BYTE FOR DIGIT
+CURdsET::	defs	2		;SUBROUTINE TO SET VALUE INTO DIGIT
+CURDUP::	defs	2		;SUBROUTINE TO BUMP DIGIT
+CURDDN::	defs	2		;SUBROUTINE TO DECR DIGIT
+LASTSEC::	defs	1		;RAW LOW SECONDS FROM CLOCK
+;
+;
+	defs	1
+cur::	defs	32
+;
+DATMM	defl	CUR+1		;MONTH
+DATDD	defl	CUR+4		;DAY OF MONTH
+DATYY	defl	CUR+7		;YEAR
+TIMHH	defl	CUR+11		;HOURS
+TIMMM	defl	CUR+14		;MINTES
+TIMSS	defl	CUR+17		;SECONDS
+TIMAP	defl	CUR+20		;AM/PM OR BLANK FOR 24-HOUR FORMAT
+DAYOW	defl	CUR+23		;DAY OF WEEK
+;
+;------------------------------------------------------------------------------
+;
+;	;
+;	; move/xmove data buffer and extended RAM test storage area
+;	;
+;
+;
+xbuf		defl	08000h	;Interbank buffer located at first ram outside
+				; of MPU-Z. OMNIDISK can not DMA to internal 
+				; RAM of MPU-Z
+@cbnk::		defs	1	; current bank
+;
+destin::	defs	2
+source::	defs	2
+tmatemp::	defs	2
+failures::	defs	2
+passes::	defs	2
+nblocks::	defs	2
+block::		defs	2
+dmato::		defs	2
+;
+;------------------------------------------------------------------------------
+;
+; Input buffer
+;
+cbuffsz		defl	132		; buffer length
+cbuff::		defs	cbuffsz		;
+;
+maxdevices	defl	5		; # of character i/o devices (8 max)
+xofflist::	rept	maxdevices
+		defs	1
+		endm			; ctl-s clears to zero, else -1
+;
+ldloc::		defs	2		; last dumped/examined location
+;
+;  Omnidisk error
+;
+derrtbl::	defs	10		; data returned from omnidisk
+;					; describing its' status
+unit::		defs	1		; Omnidisk boot unit
+numbrec::	defs	1		; Number of boot records to boot
+ldev::		defs	1		; Omnidisk physical device
+dpb_pad::	defs	20		; DPB buffer
+;
+;
+;
+;-----------------------------------------------------------------------------
+;
+; Entry here is on power up or system reset
+;
+;-----------------------------------------------------------------------------
+;
+;	cseg
+	org ROMptr	; This code appears here for reads only, writes
+			; are transparent to whatever is "underneath"
+;
+.z80
+Rom1::	ld	sp, stack	; Initialize stack pointer
+;
+; Zero internal RAM
+;
+	xor	a		; fill value
+	ld	bc,4000h	; Length
+	ld	de,4000h	; Start point
+		
+	ld	h,d	; Destination pointer = Source ptr + 1
+	ld	l,e	;
+	inc	de	;
+	ld	(HL),a	; Fill first byte with falue
+	dec	bc	; Eliminate first byte from count
+	ldir		; Use block move to fill rest by moving
+
+;
+; Initialize various pointers
+;
+	ld	hl,0
+	ld	(ldloc),hl	; initialize last dumped/displayed ptr
+	dec	hl		; HL = ffff
+	ld	(abvec),hl	; No abort allowed during character I/O
+;				;
+	xor	a
+	ld	(bd$flg),a	; default to boot , rather than dump mode
+;				;
+
+;
+; Initialize XON/XOFF table on all character I/O devices to XON
+;
+;
+
+	ld	hl,xofflist
+	ld	b,maxdevices
+SetQ::
+	ld	(hl),-1
+	inc	hl
+	dec	b
+	jr	nz,SetQ
+
+	call port$list		; output a list of commands to ports..
+				; to initialize 2681  Dual SIO
+				;		8259A PIC
+				;		5832  RTC
+				;		8255A PIO
+				;
+;				;
+	defb	(endlist-$-1)/2 ; length of list to follow
+;				;
+	defb	EXTADR,0	; set external address to default of 0000 0000
+	defb	mra,00010011b	;  no rts, 8b, no parity
+	defb	mra,00001111b	;  no rts, no cts, 2 stop bits
+	defb	csra,0cch	; 19.2k baud default
+;	defb	cra,2aè		» Reseô receiver on port A, disable tx & rx
+;	defb	cra,30h		; Reset transmitter on port A
+;	defb	cra,15h		; select mr1b, enable port A xmit and recieve
+	defb	cra,5
+	defb	mrb,12h
+	defb	mrb,0fh
+;	defb	mrb,93h		; port B:: RTS contrnl, 8 bits, no parity
+;	defb	mrb,2fh		; port B:: full duplex, rts, no cts, 2 stop bits
+	defb	csrb,66h
+	defb	crb,5
+;	defb	crb,2ah		; reset rcvr B, disable tx & rx
+;	defb	crb,30h		; reset xmit on B
+;	defb	crb,15h		; select mr1b, enable port b xmit and recieve
+	defb	acr,0b0h	; Baud rate set#2, 3.84 mhz counter, no ip0..3 ints
+	defb	imr	,00000000b
+	defb	setopb	,11111111b
+;	defb	ipcr	,10110000b
+	defb	paraCTL	,10011011b	; All inputs
+	defb	3	,0aeh		; initialize sio40. there or not.
+	defb	3	,027h
+	defb	omnidata,-1		; Issue Reset command to OMNIDISK
+endlist::
+
+	ld	a,(0100h)		; Check if in OS or monitor
+	cp	31h			; ld sp....
+	jr	z,stal			; stand-alone mode (non-OS environment)
+	ld	a,1
+	out	(bnk$port),a
+;
+;	moved here, because this is a conditional init
+;
+;	defb	bnk$port,1		; Reset RAM bank port
+;					; ( Usefull under CPM+ to assure
+;					;   that the correct bank is there 
+;					;   at boot time. )
+stal:
+;
+;
+;-----------------------------------------------------------------------------
+;
+; What shall we do next ? 
+;     the procedure depends on what is on the 8255A input port from switch
+;     SW1
+;
+;     read switch
+;	; 1] check if POJ bit set, if so simulate a "POJ"
+;	; 2] put proper value in i/o vectors from M0, M1 settings
+;	; 3] branch on z0-3 bhts to 1/16 routines
+;
+;
+;-----------------------------------------------------------------------------
+;
+;
+lp1::
+	in	a,(POJport)
+	and	00000001b		; keep low bit
+	jr	z,noPOJ			; if bit is set, then do a "POJ"
+;
+	in	a,(paraB)		; get high bits
+	and	11110000b
+	ld	h,a			; form address, and do it.
+	ld	l,0
+	jp	(hl)
+
+
+viox	defl	10000000b		; vio-x vector
+seraflg	defl	01000000b		; serial "A" vector
+serbflg	defl	00100000b		; serial "B" vector
+osioflg	defl	00010000b		; other SIO flag
+centflg	defl	00001000b		; centronics, and we hope
+					; that you only attempt this for output
+
+;------------------------------------------------------------------------------
+;
+;  ;------------------------------------------;
+;  ;   0    0    0    0    0    0    0    0   ;
+;  ;  -1-  -2-  -3-  -4-  -5-  -6-  -7-  -8-  ;      Switch 1, MPU-Z
+;  ;   1    1    1    1    1    1    1    1   ;
+;  ;------------------------------------------;
+;
+;                  switch positions 1 and 2
+;               ------------------------------
+;
+;     1   2        vector        I/O mode
+;
+;    dwn dwn       0001 0000     Auto Console Find
+;    dwn  up       0010 0000     2681 serial B  (J1)
+;     up dwn       0100 0000     2681 serial A  (J2)
+;     up  up       1000 0000     Vio - X
+;
+;------------------------------------------------------------------------------
+
+noPOJ::	ld	a,7
+	out	(omnidata),a
+	in	a,(paraC)		; get redirection bits
+	rra				; put in b1, b0
+	and	00000011b		; and mask
+
+	ld	b,a
+	inc	b	
+	ld	a,00000001b
+;
+rotm::	rrca
+	dec	b
+	jr	nz,rotm
+
+	ld	(@civec),a
+	ld	(@covec),a
+
+	ld	hl,dopri
+	push	hl			; provide a return point
+
+	cp	viox
+	jr	nz,n1
+	call	ivio			; Call vio init
+	push	af
+	call	psignon
+	call	?prmsgn
+	dc	'VIO-X firmware rev '
+	pop	af
+	jp	phex			; Show firmware number
+;	ret				; jump to dopri
+;
+;
+;-----------------------------------------------------------------
+;
+
+n1::	cp	seraflg
+	jr	nz,n2
+
+	call	iat			; autobaud for A channel
+	push	af
+	call	psignon
+	call	?prmsgn
+	dc	'Serial channel A, '
+	pop	af
+
+	call	?showbaud
+
+	ret
+
+;-----------------------------------------------------------------
+;
+n2::	cp	serbflg
+	jr	nz,n3
+
+	call	ibt			; autobaud for B channel
+	push	af
+	call	psignon
+	call	?prmsgn
+	dc	'Serial channel B, '
+	pop	af
+
+	call	?showbaud
+
+	ret
+
+n3:
+;	call	ibt		; find console
+;	call	iat
+;	call	ivio
+	jp	n3
+
+
+psignon::
+	call	ceninit		; Initialize 8255 for centronics
+	call	initvars
+	call	?prmsgi		; Show online message
+;
+	defb	'L'-40,1bh,'*',1ah
+	dc	'Fulcrum MPU-Z System Monitor W/Diagnostics v3.51 (C)1986'
+	ret
+
+
+bpt:
+	defb	004h,	'300  ',0
+	defb	006h,	'1200 ',0
+	defb	008h,	'2400 ',0
+	defb	009h,	'4800 ',0
+	defb	00bh,	'9600 ',0
+m192:	defb	00ch,	'19200',0
+	defb	0
+
+?showbaud:
+	and	00001111b
+	ld	c,a		; Hide baud rate in C
+
+	ld	hl,bpt		; Point to print table start
+
+nexprin:
+	ld	a,(hl)		; abort on 0
+	or	a
+	jr	z,deflt
+
+	inc	hl		; point to message part of table just in case
+
+	cp	c		; match ?
+	jr	z,bmatch
+
+	rept	6
+	inc	hl		; skip to next entry { BYTE, prindat[6] }
+	endm
+
+	jr	nexprin
+
+deflt:
+	ld	hl,m192
+bmatch:
+	call	?prmsgc
+	ret
+
+;
+;
+;	; Read Z0-3 from switch
+;	; 
+;
+;
+dopri::	ld	de,rom1		; place for error return
+	pop	de
+;
+	in	a,(paraB)
+	rept	4
+	rra
+	endm
+	and	00001111b	; keep lower 4 bits
+	ld	hl,modetbl
+;
+;
+;
+;------------------------------------------------------------------------------
+; a  = offset
+; hl = table base
+; Jump to routine whose address is at table base + 2 * a
+
+found1::
+	rla			; A *= 2
+	call	addAHL		; HL += A
+	ld	a,(HL)
+	inc	hl
+	ld	h,(HL)		; get high byte
+	ld	l,a
+	jp	(hl)		; PCHL
+
+	; sixteen entry table
+
+modetbl::
+	defw	Tmat		; Omnidisk dma test
+	defw	nro		; No ram used, Output to VIO-X, stream of +
+	defw	Lramio		; Local ram i/o test
+	defw	Eramt		; External RAM test
+	defw	Nrio		; register io test
+	defw	regtest		; 
+	defw	monit		; 
+	defw	BRAMT		; Bank ram test (external + internal)
+	defw	CADDR		; Cycle address
+	defw	T2681		; 2681 diagnostics
+	defw	T8255		; 8255 diagnostic
+	defw	SCLOCK		; set clock
+	defw	FSPEED		; check clock speed against CPU clock
+	defw	monit		; 
+	defw	monit		; Go straight to monitor
+	defw	justboot	; Try boot, on fail go to monitor
+
+
+nro::
+	in	a,(viox$status)
+	and	2
+	jr	z,nro
+	ld	a,'+'
+	out	(viox$data),a
+	jr	nro
+
+
+nrio::
+	in	a,(viox$status)
+	and	2
+	jr	z,nrio
+	in	a,(viox$data)
+	out	(viox$data),a
+	jr	nrio
+
+
+caddr::
+	ld	a,1
+caddr1::
+	out	(extadr),a
+	rla
+	jr	nc,caddr1
+	jr	caddr
+
+
+lramio::
+	in	a,(viox$status)
+	and	2
+	jr	z,lramio
+	in	a,(viox$data)
+	push	af			; cheap simple ram test
+	pop	af
+	out	(viox$data),a
+	jr	lramio
+
+eramt::
+	in	a,(viox$status)
+	and	2
+	jr	z,eramt
+	in	a,(viox$data)
+	ld	(8000h),a
+	ld	a,(8000h)
+	out	(viox$data),a
+	jr	eramt
+
+;
+;
+; List of not yet implemented functions
+;
+regtest::
+	jr	$
+t2681::	jr	$
+t8255::	jr	$
+bramt::	jr	$
+fspeed::jr	$
+
+;
+; function not yet implemented
+;
+notyimp::
+	call	?prmsgi
+	dc	'Function not yet implemented'
+	ret
+
+;------------------------------------------------------------------------------
+; Initialize 8255 for centronics usage
+;
+ceninit:call	port$list
+	defb	3			; List of 3 data items
+	defb	paraA	,11110000b	; init port c (8255) data
+	defb	paraCTL	,10100010b	; Mode 1, ports A & C are outputs
+					; B is input
+	defb	paraCTL	,00001011b	; Set port C bit 5
+	ret
+
+;------------------------------------------------------------------------------
+;
+; General purpose delay loop, 	All registers preserved
+;
+deloop::
+	push	hl
+	push	af
+	ld	hl,0		;\ 
+wrst::				; \
+	inc	hl		;  \  
+	ld	a,l		;  /
+	or	h		; /
+	jr	nz,wrst		;/
+	pop	af
+	pop	hl
+	ret
+
+
+;-----------------------------------------------------------------------------
+; Brings boot records into ram
+; and execs them
+;
+;  unitboot :   B [physical-unit]		; Boots from unit
+;  justboot :   B				; Default unit from O/D switch
+;
+	token	'B',0,1,justboot, unitboot
+;
+justboot::
+	xor	a
+	ld	(unit), a		; Unit 0
+	inc	a			; A=1
+
+jb1::	ld	(numbrec),a		; 1 boot record
+	ld	hl,0			; HL = load point
+	push	hl			; TOS = exec point
+	call	doboot			; LOAD
+	jp	bootr1			; EXEC
+
+
+unitboot::
+	pop	hl
+	ld	a,l
+	ld	(unit), a		; Get physical unit #
+	jr	jb1			; Set up exec point and load point
+					; and go boot
+;
+;------------------------------------------------------------------------------
+; Attempt Disk Boot, test routine
+; Only brings boot record(s) into RAM for examination     
+; Does not exec them.
+;
+;  BT:    boot address, #records   <--- stack top
+;
+	token	'BT',2,2,tbn
+
+tbn::	pop	hl
+	ld	a,l
+	ld	(numbrec), a
+
+	pop	hl			; HL = boot address
+
+	ld	bc,monit		; Xec point after boot
+	push	bc
+
+	call	doboot			; Fall into doboot
+
+	jp	qbooter
+
+;-----------------------------------------------------------------------------
+; Workhorse of all boot routines...
+; Stack top --->  execution point
+;         HL  =   load address
+;
+doboot::
+	push	hl		; Save load address
+
+	in	a,(omnidata)	; Clear junk
+
+	ld	a,-1		; Reset Omnidisk
+	out	(omnidata),a
+	call	deloop		; Wait a bit for omnidisk firmware to settle
+
+	in	a,(omnidata)	; Clear power on junk
+	in	a,(omnidata)
+
+	call	?cmdlist
+	defb	2,5,0		; See what it is we have on logical
+				; Device A:
+
+	call	deloop		; This method is used to provide
+	in	a,(omnidata)	; a way out if it fails
+
+	ld	(ldev), a	; store for later use
+	and	00010000b
+	or	a
+	jp	z,nodisk	; There is no omnidisk
+
+	call	?onelist
+	defb	9		; Select unit command
+	ld	a,(unit)	; get and send Omnidisk boot unit
+	call	?sendcmd
+	call	?onelist	; send boot command	
+	defb	0		;
+	ld	a,(numbrec)	; Send
+	call	?sendcmd	; # of records to boot
+	call	?onelist	; Send 
+	defb	16h		; Get-general-status command
+
+	pop	hl		; get load point
+
+	; delay for disk access while
+	; abort on data from omnidisk
+	; if delay times out, then omniHARD
+	;
+
+	ld	de,-1		; loop counter
+waitomni::
+	ld	a,5
+dly1::
+	inc	a
+	rept	8
+	nop
+	endm
+	jr	nz,dly1
+	dec	de
+	ld	a,d
+	or	e
+	jp	nz,dly10	; Wait some more
+				; too long for read, must of got zapped
+	call	?prmsgi
+	dc	'Omnidisk not responding'
+	jp	Qbooter
+
+dly10::
+	in	a,(omnistat)
+	rrca
+	jp	nc,waitomni
+
+	and	40h
+	jp	z,qbooter		; got status instead of data
+
+	in	a,(omnidata)
+	ld	(hl),a
+	inc	hl
+
+	cp	0E5h		; format default for floppy ?
+	jp	z,notbootdsk
+	or	a		; also not likely
+	jp	z,notbootdsk
+	cp	-1		; hard disk default format value
+	jp	z,notbootdsk
+	
+	call	?getdat		; otherwise load the rest of the data
+
+
+	ret
+
+;------------------------------------------------------------------------------
+; Switch Out MPU-Z and execute bootstrap sector
+; 
+;
+bootr1::
+	call	?prmsgn
+	defb	cr
+	rept	23
+	defb	lf
+	endm
+	dc	'Switching control to boot sector on '
+
+	ld	a,(ldev)
+	and	00001100b	; Keep only device type
+	rrca
+	rrca
+
+	or	a
+	jr	z,is8
+	dec	a
+	jr	z,is5
+	dec	a
+	jr	z,isH
+;isM
+	call	?prmsgi
+	dc	'Ram Disk'
+	jr	goboot
+
+is8::
+
+	call	?prmsgi
+	dc	'8 inch floppy'
+	jr	goboot
+
+is5::
+	call	?prmsgi
+	dc	'5 inch floppy'
+	jr	goboot
+
+isH::
+	call	?prmsgi
+	dc	'Hard disk'
+;	jr	goboot
+
+goboot::
+	pop	hl		; Get the exec point
+
+jumper::
+
+.8080				; The following one instruction needs to be
+				; in .8080 mode, since MACRO80 does not 
+				; support instructions as valid data in
+	mvi	a,PCHL		; the .z80 mode. More features.
+.z80
+
+	ld	(booter1),a	; write "through" rom to ram underneath
+
+	out	(memctl),a
+booter1::
+
+	; GETDAT
+	;	Read data from omni into (hl) until "general status" command
+	;	is accepted
+
+?getdat::
+	in	a,(omnistat)
+	rrca
+	jp	îc,?getdat		; Wait here until we have something
+	and	01000000b
+	in	a,(omnidata)
+	ret	z			;Return if general status
+	ld	(hl),a
+	inc	hl
+	jp	?getdat			;Else put into buffer and do it again
+
+;
+;
+;------------------------------------------------------------------------------
+.8080
+	;
+	; ONELIST
+	;	send one byte to omnidisk, continue execution after byte
+	;
+
+?onelist::
+	xthl
+	mov a,m
+	inx h
+	xthl
+
+	;
+	; SENDCMD
+	; 		send one byte to omnidisk, passed in (A) register
+	;
+
+?sendcmd::
+
+	push psw				; Save byte to send later
+sendcmd1::
+
+	in omnistat
+	ral
+	jc sendcmd1		; Wait for ready
+	pop psw
+	out omnidata			; Output it
+	ret
+
+
+	; INCHAR
+	;   accept one data from OMNIDISK
+	;
+
+?inchar::
+	in omnistat
+	rar
+	jnc ?inchar		; Wait until ready
+	in omnidata
+	ret			; Grab data
+
+
+
+	; ?CMDLIST
+	; Issue a list of commands
+	; continue execution
+
+
+?cmdlist::
+
+	xthl
+	mov c,m			; How many commands ?
+	inx h
+
+cmdlist1::
+	mov a,m				; Get a byte to send.
+	inx h
+	call ?sendcmd			; Send it to controller.
+	dcr c
+	jnz cmdlist1			; More commands to send ?
+	xthl				; Set return address just past list
+	ret
+;
+;
+;-----------------------------------------------------------------------------
+; Error messages for boot attempt
+;
+;
+.z80
+nodisk::
+	call	?prmsgi
+	dc	'No omnidisk at A0/A1 in system'
+	ret
+
+notbootdsk::
+	call	?prmsgi		; boot disk contains garbage
+	dc	'This disk does not contain a boot sector'
+	ret
+
+Qbooter::
+	call	?cmdlist		; Get extended status
+	defb	2
+	defb	oc$exts
+	defb	oc$gens
+
+	ld	hl,derrtbl
+	call	?getdat			; Get error list
+
+	ld	hl,derrtbl
+	ld	a,(hl)
+	or	a
+	ret	z		; No errors !!!
+
+	and	00000100b	; 04 = not up to speed (hard disk only)
+	jr	z,speedy
+
+	ld	a,(ldev)
+	and	00001100b
+	cp	00001000b	; Is this a hard disk ?
+	jp	z,undef
+	call	?prmsgi
+	dc	'Hard disk is not up to speed'
+	jp	monit		; Do not give more error messages past this
+;
+;
+speedy:	ld	a,(hl)
+	and	00000011b	; x1, x2, x3  = disk not ready
+	jr	z,ready
+	call	?prmsgi		; omnidisk not responding to boot instruction
+	dc	'Disk not ready'
+	jp	monit		; Do not give more error messages past this
+;
+;
+ready:	ld	a,(hl)
+	and	10000000b
+	jr	z,notbad	; 80 = bad disk/CRC error
+	call	?prmsgi
+	dc	'CRC error in data/and or ID fields'
+;
+;
+notbad:	ld	a,(hl)
+	and	01000000b
+	jr	z,omnibad
+	call	?prmsgi
+	dc	'ECC failed on hard disk'
+	jp	monit
+;
+;
+omnibad:ld	a,(hl)
+	cp	00010000b
+	jr	nz,undef		; None of the above
+;					; must be *really* weird error
+	call	?prmsgi
+	dc	'Disk controller needs hardware reset'
+	jp	monit
+;
+;
+undef:	call	?prmsgi
+	dc	'Undefined OMNIDISK error'
+	jp	monit
+;
+;
+;-----------------------------------------------------------------------------
+;
+;	;
+;	; Berr  - display last obtained OMNIDISK extended status
+;	;
+;
+	token	'BE',0,0,berr
+;
+berr::
+	call	?prmsgn
+	dc	'Disk I/O error -'
+	ld	hl,derrtbl
+	ld	de,10		; 9 characters to print
+	jp	gendisp		; call the generic dump routine
+;	
+;
+;------------------------------------------------------------------------------
+; Read a record from disk
+;
+;  TOS ---->>  buffer_address,  logical record,  track,  unit
+;
+	token	'RD',4,4,readunit
+;
+;
+readunit::
+	pop	hl		; get unit
+	call	?onelist
+	defb	9		; Unit select command
+	ld	a,l
+	call	?sendcmd	; send UNIT #
+
+	pop	hl
+	call	?onelist
+	defb	10		; Track select command
+	ld	a,l
+	call	?sendcmd	; send track #
+	ld	a,h
+	call	?sendcmd
+
+	call	?cmdlist
+	defb	2
+	defb	24		; Do auto-density stuff
+	defb	22		; get general status
+
+	ld	hl,dpb_pad
+	call	?getdat
+	jp	nz,qbooter	; Process error
+
+	pop	hl		; record
+	call	?onelist
+	defb	11
+	ld	a,l
+	call	?sendcmd
+	call	?cmdlist
+	defb	2,13,22		; Read and general status
+
+	pop	hl
+	call	?getdat
+	jp	nz,qbooter	; Process error
+
+	ret			; Done
+
+;------------------------------------------------------------------------------
+; Write a record to disk
+;
+;  TOS ---->>  buffer_address,  logical record,  track,  unit
+;
+	token	'WR',4,4,writunit
+;
+;
+writunit::
+	pop	hl		; get unit
+	call	?onelist
+	defb	9		; Unit select command
+	ld	a,l
+	call	?sendcmd	; send UNIT #
+
+	pop	hl
+	call	?onelist
+	defb	10		; Track select command
+	ld	a,l
+	call	?sendcmd	; send track #
+	ld	a,h
+	call	?sendcmd
+
+	call	?cmdlist
+	defb	2
+	defb	24		; Do auto-density stuff
+	defb	22		; get general status
+
+	ld	hl,dpb_pad
+	call	?getdat
+	jp	nz,qbooter	; Process error
+
+	pop	hl		; record
+	call	?onelist
+	defb	11
+	ld	a,l
+	call	?sendcmd
+	call	?cmdlist
+	defb	2,14,0		; Write and mode
+
+	call	?inchar
+	or	a
+	jp	nz, qbooter
+
+	pop	hl
+	ld	c,128
+write1::in	a,(omnistat)
+	rlca
+	jp	c,write1		; Wait until ready
+	ld	a,(hl)
+	out	(omnidata),a		; SEnd the data to write
+	inc	hl			; Point to new data
+	dec	c			; We now have less data to go yet
+	jp	nz,write1		; write again until no more
+
+	ret			; Done
+
+;
+;-----------------------------------------------------------------------------
+; Monitor entry point
+
+Monit::
+;	prompt, and get command
+;
+prmptsp::
+	ld	hl,prmptsp
+	ld	(abvec),hl
+	push	hl		; provide a return point
+	ld	sp,stack
+;
+;------------------------------------------------------------------------------
+; Command line scanner, parser and dispatcher
+;
+;
+cmdxec::
+	call	?prmsgn			; output prompt string
+	defb	cr,lf, '%',' '+80h	; monitor prompt
+
+	call	getline			; Get command
+	call	crlf
+	ld	hl,botlist		; point to end of list
+
+scan$line::
+	ld	b,0			; null count of scanned chars in buffer
+	ld	de,cbuff		; point to input buffer w/DE
+.8080
+nxtchr::
+	xchg
+	ldax	d
+	sub	m
+	ani	01111111b
+	xchg
+	jz	mosf			; Matched ok, so far...
+
+nxtcmd::
+	mov	a,m
+	ora	a
+	jm	ptrnxt			; yes, bit 7 was set
+	inx	h
+	jmp	nxtcmd			; go to the end of the command
+
+mosf::			; goto next character in token, unless done
+	mov 	a,m
+	inx	h
+	inx	d
+	inr	b
+	ora	a
+	jm	fmat			; yes, bit 7 is set thus match
+
+.z80
+	jr	nxtchr			; no, not at end of token.
+
+ptrnxt::
+; Pointer to previous link returned, if none, then Z flag set.
+;
+	inc	hl			; point to the previous link
+	ld	a,(hl)			; and get it
+	inc	hl
+	ld	h,(hl)
+	ld	l,a			; pointer to next command
+	or	h			; see if NULL ptr
+
+	jp	z,?huh			; if so, we have reached the end
+					; of list, command--invalid
+
+	jp	scan$line		; else try again for a match
+
+;
+; The token in the command line has been found in the table
+; Put parameters on the stack
+;
+fmat:
+	inc	hl
+	inc	hl
+	ld	a,(hl)
+	ld	(mnprms),a
+	inc	hl
+	ld	a,(hl)
+	ld	(mxprms),a
+	inc	hl			; point to first entry offset
+;
+	ld	(hltemp),hl		; save ptr to offsets
+	xor	a			; zero a
+	ld	(par$ct),a
+;
+	ld	a,(de)
+	call	chkdel
+	jr	nz,moresc
+;
+inbufpt::
+	inc	de			; nxt char
+	inc	b			; bmp ctr
+;
+moresc::
+	call	ihexw			; input a hex word
+	or	a
+	jp	z,endscan		; no more commands to be added
+;
+	push 	hl			; add a parameter
+	ld	hl,par$ct		; bmp parameter count
+	inc	(hl)
+	jp	moresc
+;
+endscan::
+	ld	a,(par$ct)
+	ld	hl,mnprms
+	cp	(hl)
+	jp	c,parmerr
+	ld	hl,mxprms
+	cp	(hl)
+	jp	c,es1
+	jp	nz,parmerr
+;
+es1::
+	ld	hl,mnprms
+	sub	(hl)
+	ld	hl,(HLTEMP)
+	call	addahl			; hl now points	to offset to routine
+	ld	a,(hl)
+	call	addahl			; hl is now the addr of routine
+	jp	(hl)
+;
+;____________________________________________________________________
+;
+;
+addahl::
+	add	a,l			; add a + l, put back into l
+	ld	l,a
+	ld	a,0	
+	adc	a,h
+	ld	h,a
+	ret
+;
+;--------------------------------------------------------------------
+;
+ihexw::	ld	hl,0
+;
+ih3::	call	getnxt
+	or	a
+	ret	z
+;
+ih6::	push	psw
+	call	ascbi
+	jp	nc,ih1
+	pop	psw
+	or	a
+	ret
+;
+;--------------------------------------------------------------------
+;
+ih1::	rept	4
+	add	hl,hl
+	endm
+	add	a,l
+	ld	l,a
+	pop	af
+	jp	ih3
+.8080
+;
+;--------------------------------------------------------------------
+;
+Ascbi::
+	sui	'0'
+	rc				; less than a zero
+	cpi	10			; more than 9
+	jc	ascbi1
+	sui	17
+	rc
+	adi	10
+	cpi	16
+;
+ascbi1::
+	cmc
+	ret
+;
+chkdel::
+	cpi	' '
+	rz
+	cpi	','
+	rz
+	cpi	cr
+	rz
+	cpi	lf
+	rz
+	ret
+;
+okdel::
+	call	chkdel
+;
+delerr::
+	call	?prmsgi
+	dc	'Invalid delimiter'
+	jmp	prmptsp
+;
+; Get next character from buffer
+;
+getnxt::
+	mov	a,c
+	cmp	b
+	jz	feol
+	ldax	d
+	inx	d
+	inr	b
+	ret
+;
+.z80
+feol::
+	xor	a
+	ret
+;
+;--------------------------------------------------------------------
+; Show level of understanding of what was just entered
+;
+parmerr::
+	call	?prmsgi
+	dc	'Too few or too many parameters'
+	jp	prmptsp
+;
+?huh::
+	call	?prmsgn			; fall into scan$line try again 
+	defb	bell,'?'+80h		; say *what* ?
+	jp	prmptsp			; fix stack, and otherwise recover
+;
+;
+;--------------------------------------------------------------------
+;
+; Structure of fields in parse table
+;
+; field # 	size	contents
+;    1		var	token, high bit set termination
+;    2		16b	pointer to previous command
+;    3		8b	minp
+;    4		8b	maxp
+;    5		var	offsets to excetion addr for variour num
+;			parms passed to f(X)
+;
+; (ADD INTERUPT/BREAK VECTOR INTO PARSE TABLE STRUCTURE)
+;
+;--------------------------------------------------------------------
+; Branch to memory address with return
+; must have exactly 1 parm, being the branch entry point
+;
+	token	'C',1,1,call1
+;
+call1::
+	pop	hl			; get jump addr
+	jp	(hl)			; do it to it
+					; ret addr set by lexical scanr/par
+;
+;--------------------------------------------------------------------
+; Switch out MPU-Z and branh to spec loc, it must have exactly 1 parm,
+; being the branch  entry point
+;
+	token	'K',1,1,jmpsw
+;
+jmpsw::
+	pop	hl				; get addr to brach to
+	jp	jumper				; do it
+
+;
+;---------------------------------------------------------------------
+; Examine/enter to memory addr space (/ ::= and-or)
+;
+; must be called with exactly one parm on stack, that being the start
+; addr
+;
+	token 	'E',1,1,entr
+;
+entr::	pop	hl				; get start addr
+;
+entr1::	call	crlf
+	call	ohexhlb				; display addr
+	call	ebyte				; display/chge byte
+	dec	hl
+	cp	cr				; done?
+	ret	z
+	cp	'-'				; go back?
+	jp	z,entr1				; yup...
+	inc	hl
+	inc	hl				; default to ==>
+	ld	(ldloc),hl			; update last ex-byte
+	jp	entr1
+;
+ebyte::
+	ld	a,(hl)				; get byte in mem
+	ld	e,a				; preset for ihex
+	call	ohexAb				; display byte
+.8080
+	xchg					; DE = addr; L= def
+	call	ihex2				; get mod/or  def
+	xchg					; HL = addr e= byte
+	mov	m,e				; put back to ram
+	ret
+;
+ihex2::	call	?conine
+	CALL	TOUPPER
+;
+ihex6:: push	psw
+	call	ascbi				; convert to ascii
+	jnc	ihex1				; valid digit
+	pop	psw
+	ret					; a=1st invalid char
+;
+ihex1::
+	dad	h
+	dad	h
+	dad	h
+	dad	h
+
+	add	l
+	mov	l,a
+	pop	psw				; merge in new digit
+	jmp	ihex2				; more?
+;
+; 
+;--------------------------------------------------------------------
+; Display memory space
+; 	routine	stack model from top
+;	disp0	(null)
+;	disp1	start
+;	disp2	end	start
+;
+	token	'D',0,2,disp0,disp1,disp2
+;
+.z80
+disp0::	ld	hl,(ldloc)
+	jr	disp4
+;
+disp1::	pop	hl
+;
+disp4::	ld	de,192
+	jr	disp
+;
+disp2::	pop	hl				; hl=end
+	inc	hl
+
+	pop	de				; de=start
+	push	de
+	sbc	hl,de
+	ex	de,hl				; de=size
+	pop	hl				; hl=start
+;
+;
+disp::
+	push	hl
+	add	hl,de
+	ld	(ldloc),hl
+	pop	hl
+;
+nxtbloc::
+	ld	b,24
+;
+nxtline::
+	call	crlf
+	call	ohexhl
+	ld	a,':'
+	call	?conout
+	call	space
+	push	bc
+	call	gendisp				; w/hl=ptr, de = count
+	pop	bc
+
+	ld	a,d
+	or	e
+	ret	z
+
+	dec	b				; ready to pause?
+	jr	nz,nxtline			; no----+1  line
+	call	?conin				; Pausw until char typed
+	call	crlf				; make a page brk
+	jr	nxtbloc				; do next block of data
+;
+;---------------------------------------------------------------------------
+; Generic display function
+;      prints to console (DE) bytes [max=16] along with acsii equivalents
+;      in ascii based hex.  Bytes are seperated by spaces.
+;
+; Input parms are passed in reg HL, B
+;	HL = addr to print from
+;	DE = byte count	 	
+;
+; Exit parms
+;	DE is remaining count
+;
+gendsp::
+	call	space
+;
+gendisp::
+	ld	b,16				; a display line 16 byte
+						; HL = start, B	= size
+	ld	c,17				; number of bytes to read
+	ld	ix,line+17			; ptr to acsii prt buf
+	xor	a				; zero a
+;
+glnzero::
+	dec	ix
+	ld	(ix),a
+	dec	c
+	jp	nz,glnzero
+	ld	c,8
+;
+gnxtbyte::
+	ld	a,(hl)
+	dec	de
+	call	phex
+	dec	c
+	jr	nz,gspnxt
+	ld	a,'-'
+	jr	gndnxt
+;
+gspnxt::
+	ld	a,' '
+;
+gndnxt::
+	call	?conout
+	ld	a,(hl)
+	inc	hl
+	cp	' '
+	jr	c,gperiod
+	cp	01111111b
+	jr	c,gCharok
+;
+gperiod::
+	ld	a,'.'
+;
+gCharok::
+	ld	(ix),a
+	inc	ix
+	ld	a,d
+	or	e
+	jp	z,gprntasc
+	dec	b
+	jp	nz,gnxtbyte
+;
+gprntasc::
+	call	space
+	push	hl
+	ld	hl,line
+	call	?prmsga		; No cr/lf
+	pop	hl
+	ret
+;
+;-----------------------------------------------------------------------------
+;
+	token	'LD',1,1,ldisp
+;
+;	stack model -> start
+;                      (a8-a23) specified only
+;
+ldisp::
+;	copy using ?xmove to buffer
+;	dump buffer
+;
+;
+	pop	bc		; start
+	push	bc
+
+	ld	hl,2		; two blocks to get
+	push	hl
+
+	ld	h,c
+	ld	l,0
+	push	hl		; Source address (A0-15)
+
+	ld	hl,xbuf		; 
+	push	hl		; Destination
+
+	ld	h,b		; from ext = B
+	ld	l,0		; to   ext = 0
+	push	hl
+	
+	call	?xmove		; get the data
+
+	ld	hl,xbuf
+	ld	b,0
+	pop	de		; A8-A23
+
+xtline::
+	ld	a,d
+	call	phex
+	ld	a,':'
+	call	?conout
+	ld	a,e
+	call	phex
+	ld	a,b
+	call	phex		; Print Extended address header
+	ld	a,' '
+	call	?conout
+
+xtbyte::
+	push	de
+	push	bc
+	ld	de,16
+	call	gendisp		; call gendisp w/HL = pointer, DE = count
+	call	crlf
+	pop	bc
+	pop	de
+
+	ld	a,b
+	add	a,16
+	ld	b,a
+
+	or	a
+	ret	z		;    Yes --> exit routine.
+	jp	xtline
+
+
+;------------------------------------------------------------------------------
+;
+	token	'LM',3,3,?lmove
+;
+;	command format:   LM start, dest, npages
+;	stack model -->	  npages ,dest ,start
+;
+?lmove::
+	pop	de		; de = npages
+	pop	hl		; hl = dest
+	pop	bc		; bc = start
+
+	push	de		; setup nblocks parm for xmove
+
+	ld	d,c
+	ld	e,0
+	push	de		; setup source parm for xmove
+
+	ld	d,l
+	push	de		; setup destination parm for xmove
+
+	ld	d,b		; D = from extent
+	ld	e,h		; E = to   extent	
+	push	de		; setup for fb/tb parm in xmove
+
+	call	?xmove
+	ret			; MUST use call/ret
+;
+;
+;------------------------------------------------------------------------------
+; Hex arithmatic
+;    H p1		p1(dec)	p1(bin)	p1(asc)	p1(1's comp)
+;    H p1 p2		p1 + p2		p1 - p2
+;
+	token	'H',1,2,hxa1,hxa2
+
+hxa1::
+	call	space
+	pop	hl		; HL is the data byte to convert
+	push	hl
+	call	odecHLb
+	pop	hl
+	call	obinHL
+	call	space
+	ld	a,l
+	call	oascA
+	ld	a,l
+	cpl
+	ld	l,a
+	ld	a,h
+	cpl
+	ld	h,a
+	jp	ohexHL
+	
+
+hxa2::
+	pop	de		; p2
+	pop	hl		; p1
+
+	push	hl
+
+	add	hl,de
+	call	ohexHLb		; print SUM
+
+	pop	hl
+	ex	de,hl
+	sbc	hl,de
+	jp	ohexHL		; Print DIFFERENCE
+
+;
+;------------------------------------------------------------------------------
+; Intel HEX format loader from input device
+;
+;   uses no entry paremeters
+;
+.8080
+	token	'INT',0,0,intel
+Intel::
+	call	?conine		; Read a character
+	sui	':'		; record marker, is it ?
+	jnz	intel		; no, wait
+
+	mov	d,a		; zero checksum
+	call	ibyte		; Input 2 hex characters
+	rz			; Count = 0 , means end of input
+
+	mov	b,e		; Byte count
+	Call	ibyte
+	mov	h,e
+	call	ibyte
+	mov	l,e
+	call	ibyte		; Dummy record type ignored
+
+data::	call	ibyte
+	mov	m,e
+	inx	h
+	dcr	b
+	jnz	data
+	call	ibyte		; Read and add checksum
+	jz	intel		; Ok as is
+	call	?prmsgi
+	dc	'Checksum error on intel hex record'
+	ret
+
+ibyte::
+	call	intl1		; get next character from input, and convert
+				; to binary nibble in low 4 bits
+	rept	4
+	add	a
+	endm
+	mov	e,a		; Save upper half of byte
+ibyte2::
+	call	intl1		; get lower nibble
+	add	e
+	mov	e,a		; Save character
+	add	d		; add to checksim
+	mov	d,a
+	ret
+
+intl1:
+	call	?conine
+	call	ascbi
+	rnc
+	call	?prmsgi
+	dc	'Invalid hex character'
+	jmp	prmptsp
+;
+;
+;------------------------------------------------------------------------------
+; "Quick and dirty", non-destructive Memory test
+;
+	token	'T',1,2,tmem1,tmem2
+;
+; mem1 stack model --> end start
+; mem2 stack model --> start
+;
+tmem1::
+	pop	hl		; hl = start
+	lxi	b,-1		; size = ffff
+	jmp	memtest
+
+tmem2::
+	pop	hl
+	pop	bc
+.z80
+	sbc	hl,bc		; HL = size, BC = start
+.8080
+	push	hl
+	mov	h,b
+	mov	l,c
+	pop	bc
+
+memtest::
+	dcx	b	; bc = size-1 or 0
+mem2::
+	xra	a
+	mov	d,m	; Save ram datum
+mem1::	mov	m,a
+	cmp	m
+	jnz	memerr	; NOT GOOD
+	dcr	a
+	jnz	mem1	; try another pattern
+	mov	m,d	; Restore ram
+	call	?conist	; Quit/ Too Looong Abort
+	rnz		; --->YES
+	inx	h
+	dcx	b
+	mov	a,b
+	ora	c	; More to go ?
+	jnz	mem2
+	ret
+
+;
+; Come here for quick test ram errors
+Memerr::
+	inx	h	; Adjust for prnmem
+	mov	e,a	; Save
+	call	pntmem	; Print addr, contents
+	mov	a,e	; Restore
+	jmp	srcpnt1 ;   and what it should really be		
+
+;------------------------------------------------------------------------------
+; Memory test #2
+;
+;
+	token	'MT',1,2,zmem1,zmem2
+;
+; mem1 stack model --> end start
+; mem2 stack model --> start
+;
+zmem1::
+	pop	hl		; hl = start
+	lxi	b,-1		; size = ffff
+	jmp	mem1test
+.z80
+zmem2::
+	pop	hl
+	pop	bc
+	sbc	hl,bc		; HL = size, BC = start
+	push	hl
+	ld	h,b
+	ld	l,c
+	pop	bc
+.8080
+
+mem1test::
+	call	initvars
+	push	b
+	pop	d
+	mvi	c,1
+	mvi	b,0
+brna::	push	b
+	push	d
+	push	h
+brnb::	mov	m,c
+	inr	c
+	jnz	brnc
+	inr	c
+brnc::	inx	h
+	dcx	d
+	mov	a,e
+	ora	d
+	jnz	brnb
+	pop	h
+	pop	d
+	pop	b
+	push	d
+	push	h
+brnd::	mov	a,m
+	cmp	c
+	jz	brne
+	inr	b
+	call	adpra
+brne::	inr	c
+	jnz	brnf
+	inr	c
+brnf::	inx	h
+	dcx	d
+	mov	a,e
+	ora	d
+	jnz	brnd
+	pop	h
+	pop	d
+	call	?conist		; Z = no input
+	jz	brna
+	call	crlf
+	mov	a,b
+	call	ohexAb
+	call	?prmsgi
+	dc	'Errors'
+	ret
+
+adpra::	push	psw
+	call	crlf
+	pop	psw
+adprb::	call	ohexAb
+	call	ohexhlb
+	mov	a,c
+	jmp	phex
+.z80
+
+;
+;------------------------------------------------------------------------------
+; Long Test
+;  Tests ram outside of first 64k bank ( as well as TMA on omnidisk )
+;
+	token	'LT',2,2,longmem
+;
+; stack model from the top --> Block_end, Block_start
+;				[A23-A8]  [A23-A8]
+;
+;
+longmem::
+	pop	de		;
+	push	de		;
+	pop	hl		;
+	ld	(trame),hl	; de,trame = end of test block
+
+	pop	hl		; 
+	ld	(trams),hl	; hl,trams = start of test block
+
+
+	ex	de,hl		; swap hl with de
+	sbc	hl,de		;
+
+	add	hl,hl		; rotate HL left one
+				; HL = # of 128 byte blocks
+				; DE = start
+
+	ld	(nblocks),hl	; # of blocks to test
+
+
+				; all ram errors are displayed in the
+				; compare routine called from lfilcmp
+				;
+
+	ld	a,0		; Fill all with  0's and check
+	call	lfilcmp		;
+
+	ld	a,-1		; Fill all with -1's and check
+	call	lfilcmp
+
+	ld	a,0aah		; Fill with 1010 1010 and check
+	call	lfilcmp
+
+	ld	a,055h		; Fill with 0101 0101 and check
+	call	lfilcmp
+
+	call	?prmsgi
+	dc	'Test Complete'
+
+	ret			; NOW, do the walking bit test
+
+;
+;------------------------------------------------------------------------------
+;
+;
+lfilcmp::
+; Notes;
+	ld	h,a
+	cpl
+	ld	l,a		; fill value
+	ld	(hltemp),hl
+
+			;  nblocks set to # of blocks to fill
+			; trams   set to ram block start (16bit), A23-A16
+
+	call	lfill0		; do the long fill
+
+	call	lcompare	; check long ram
+
+	ret
+
+
+;
+;------------------------------------------------------------------------------
+; This routine is only callable with parameter passed in locations, vs stack
+; since it is of limited usefulness. That is outside of this memory test
+;
+; nblocks = # of blocks to check
+; trams   = address of first ram block (A23-A16)
+;
+lcompare::
+	ld	hl,(nblocks)
+	ld	(block),hl
+
+	ld	hl,(trams)
+	ld	(dmato),hl
+
+dlpAB:	ld	hl,(block)
+	ld	a,h
+	or	l
+	ret	z		; Done ?
+
+
+	ld	hl,2		; size of move in 128 byte blocks
+	push	hl
+	ld	hl,(dmato)	;
+	ld	h,l
+	ld	l,0		; fix
+	push	hl		; source of data
+;
+; Notes;
+;	1} fill buffer with value.
+;	2} block = nblocks
+;          dmato = trams
+;	   do {
+;              dmato = trams
+;              dmafrom = buffer
+;              dmasize = 1
+;              ?xmove
+;              dmato += 256
+;          } while (block --)
+;             
+
+	ld	hl,xbuf		; destination of data (lower 16 bits)
+	push	hl
+
+	ld	hl,(dmato)
+	ld	l,0		; to = 0
+				; from is ... as is
+	push	hl
+
+	call	?xmove		; do the move
+
+	ld	hl,(dmato)
+	inc	hl
+	ld	(dmato),hl	; HL += 256 bytes
+
+	ld	hl,(block)
+	dec	hl
+	ld	(block),hl	; one less block to go
+;
+;	do actual "long" compare here
+;
+;
+	ld	de,xbuf
+	ld	hl,(hltemp)
+	ex	de,hl
+	ld	bc,128		; Compare 256 bytes (256 bytes = 128 loops)
+
+mcbu::	ld	a,(hl)
+	cp	d
+	call	nz, badlcomp
+	inc	hl
+	ld	a,(hl)
+	cp	e
+	call	nz, badlcomp
+	inc	hl
+
+	dec	bc
+	ld	a,b
+	or	c
+	jr	nz,mcbu		; more to compare ?
+
+	jp	dlpAB		; repeat until done
+
+badlcomp:
+
+	; notes;
+	; HL = local buffer test address
+	;      real ram address = (long) (HL-xbuf) + (long) (dmato shl 8)
+	;
+
+	push	hl
+	push	bc
+	push	de
+
+	ld	de,xbuf
+	sbc	hl,de			; get offset into buffer
+	push	hl
+	ld	hl,(dmato)		; get dmato
+	ld	b,h			; keep extended address in B
+	ld	h,l
+	ld	l,0
+	pop	de
+	add	hl,de			; form lower 16 bits of address in HL
+
+	push	hl
+	call	?prmsgn
+	dc	'Bad data at location '
+	pop	hl
+
+	ld	a,b
+	call	phex			; print ext address
+	call	ohexhl			; print address
+	call	crlf
+
+	
+	pop	de
+	pop	bc
+	pop	hl
+
+	ret
+
+
+;
+;
+;------------------------------------------------------------------------------
+; Long fill
+;
+	token	'LF',3,3,lfill
+;
+; stack model from the top --> value, Block_end, Block_start
+;				       [A23-A8]  [A23-A8]
+;
+;
+lfill::
+	pop	hl
+	ld	(hltemp),hl	; save fill value
+
+	pop	de		;
+	push	de		;
+	pop	hl		;
+	ld	(trame),hl	; de,trame = end of test block
+
+	pop	hl		; 
+	ld	(trams),hl	; hl,trams = start of test block
+
+
+	ex	de,hl		; swap hl with de
+	sbc	hl,de		;
+
+	add	hl,hl		; rotate HL left one
+				; HL = # of 128 byte blocks
+				; DE = start
+
+	ld	(nblocks),hl	; # of blocks to test
+
+;
+; Notes;
+;	1} fill buffer with value.
+;	2} block = nblocks
+;          dmato = trams
+;	   do {
+;              dmato = trams
+;              dmafrom = buffer
+;              dmasize = 1
+;              ?xmove
+;              dmato += 256
+;          } while (block --)
+;             
+;------------------------------------------------------------------------------
+; Or.... Call lfill0 w/
+;
+;         nblocks set to # of blocks to fill
+;         trams   set to ram block start (16bit), A23-A16
+;         hltemp  set to fill value (16bit)
+;
+lfill0::
+	ld	de,xbuf
+	ld	hl,(hltemp)
+	ex	de,hl
+	ld	bc,128		; Fill 256 bytes (256 bytes = 128 loops)
+
+mfbu::	ld	(hl),d
+	inc	hl
+	ld	(hl),e
+	inc	hl
+
+	dec	bc
+	ld	a,b
+	or	c
+	jr	nz,mfbu		; more to go ?
+
+
+	ld	hl,(nblocks)
+	ld	(block),hl
+
+	ld	hl,(trams)
+	ld	(dmato),hl
+
+
+dlpAA:	ld	hl,(block)
+	ld	a,h
+	or	l
+	ret	z
+
+
+	ld	hl,2		; size of move in 128 byte blocks
+	push	hl
+	ld	hl,xbuf		; source of data (lower 16 bits)
+	push	hl
+	ld	hl,(dmato)	;
+	ld	h,l
+	ld	l,0		; fix
+	push	hl		; destination of data
+	ld	hl,(dmato)
+	ld	l,h		; to = A23-A16
+	ld	h,0		; from = 0
+	push	hl
+
+	call	?xmove		; do the move
+
+	ld	hl,(dmato)
+	inc	hl
+	ld	(dmato),hl	; HL += 256 bytes
+
+	ld	hl,(block)
+	dec	hl
+	ld	(block),hl	; one less block to go
+
+	jp	dlpAA		; repeat until done
+
+
+;
+;
+;
+;------------------------------------------------------------------------------
+; Memory Move
+;
+	token	'MV',3,3,move
+;
+; stack model from top ->  destination, source_end, source_start
+;
+
+move::
+.z80
+	pop	de		; DE = destination
+	pop	hl		; hl = source_end
+	pop	bc		; bc = source_start
+
+	push	bc		; save source_start
+?movel::
+	sbc	hl,bc
+	ld	b,h
+	ld	c,l
+        inc	bc		; BC = length of move
+
+	pop	hl		; HL = source start
+
+	ld	a,b		; is size 0 ?
+	or	c
+	ret	z
+			; determine to move up/ or move down
+	ex	de,hl	
+	push	hl
+	and	a	; clear carry
+	sbc	hl,de
+	and	a
+	sbc	hl,bc
+	pop	hl
+.8080
+	xchg
+	jnc	doleft
+
+			; destination area is above source, and overlaps it
+	dad	b
+	dcx	h
+	xchg
+	dad	b
+	dcx	h
+	xchg
+.z80
+	lddr
+	ret
+
+
+;-----------------------------------------------------------------------------
+;  Fill Memory with value
+;
+	token	'F',2,3,fill2,fill3
+;
+;  Stack model for fill3, top -> value, end, start
+;  Stack model for fill2, top -> end, start
+;
+fill3::
+	pop	hl		; get value in A
+	ld	a,l
+	jr	fill0
+fill2::
+	ld	a,0		; default to this value
+fill0::
+	pop	hl
+	pop	de		; DE = start
+	sbc	hl,de
+	ld	b,h
+	ld	c,l		; 
+	inc	bc		; BC = length
+
+fill::
+	ld	h,d	; Destination pointer = Source ptr + 1
+	ld	l,e	;
+	inc	de	;
+	ld	(HL),a	; Fill first byte with falue
+	dec	bc	; Eliminate first byte from count
+	ld	a,b	; More to fill ?
+	or	c
+	ret	z	; NO, return size was 1
+doleft::
+	ldir		; Yes, use block move to fill rest by moving
+	ret		;	value ahead one byte...
+
+;-----------------------------------------------------------------------------
+; Input/Output to any port to/from console using ascii based hex
+;
+;
+	token	'I',1,1,Inport
+	token	'O',2,2,outport
+;
+Inport::
+	pop	bc
+	in	a,(c)	; input from port (C) to register A
+	push	af
+	call	ohexAb	; output to terminal
+	pop	af
+	jp	obina	; show also binary value
+
+
+Outport::
+	pop	de	; Get value in E
+	pop	bc	; Get port in C
+	out	(c),e	; output to port c from register E
+	ret
+;
+;-----------------------------------------------------------------------------
+; Compare memory blocks and print differences
+;
+;
+	token	'V',3,3,cmpblk
+;
+; stack model from the top -> start2, end1, start1
+CmpBlk::
+	pop	de		; destination_start
+	pop	hl		; source_end
+	pop	bc		; source_start
+	push	bc
+	sbc	hl,bc		; hl is the length
+	ld	b,h
+	ld	c,l		; BC = length - 1
+	inc	bc		; length
+	pop	hl		; HL = source_start
+.8080
+cmpblk1::
+	ldax	d		; destination byte
+	cmp	m		; Same as source ?
+	inx	h
+	inx	d
+	jz	cmpB1		; Yes, same... DONT print
+	
+	CALL PNTMEM	;PRINT ADDR, SOURCE DEST
+	XCHG
+	CALL PNTMEM+3	;NO CRLF
+	XCHG
+CMPB1::	DCX  B
+	mov	a,b
+	ora	c
+	rz		; yes, we are done
+	CALL ?conist	;BAIL OUT?
+	RNZ		;YES
+	JMP  CMPBLK1
+
+;
+;	SEARCH FOR MASKED 16 BIT VALUE
+;	"S BEG, END( 16 BIT VALUE, 16 BIT MASK"
+;------------------------------------------------------------------------------
+;
+;
+	token	'SR',3,4,search,msearch
+;
+; stack model S   --> value, end, start
+; stack model MS  --> mask, value, end, start
+;
+
+msearch::
+.z80
+	pop	ix		; IX = MASK
+	jr	sr0
+search::
+	ld	ix,-1
+sr0:
+	pop	de		; DE = value
+	pop	hl		; hl = end
+	pop	bc		; bc = start
+	sbc	hl,bc		; hl = size
+	push	hl		; save size
+	ld	h,b
+	ld	l,c		; HL = start
+	pop	bc		; BC = size
+	push	ix		; save mask on top of stack
+
+search1::
+	ld	a,(HL)		; low byte
+.8080
+	XTHL		;HL = MASK VALUE
+	ANA  H		;MASK HIGH BYTE
+	CMP  D		;IS IT CORRECT VALUE?
+	XTHL		;RESTORE START POINTER
+	INX  H		;BUMP POINTER
+	JNZ  CMP16	;NO MATCH
+	MOV  A,M	;LOW BYTE
+	XTHL		;GET MASK IN HL
+	ANA  L
+	CMP  E
+	XTHL		;HL = START, STACK = MASK
+	CZ   SRCPNT	;PRINT MATCH IF FOUND
+CMP16::	DCX  B
+	mov	a,b
+	ora	c
+	JNZ  SEARCH1
+	POP  B		;REMOVE MASK VALUE
+.z80
+	jp	crlf
+
+;------------------------------------------------------------------------------
+; I/O device redirection allocation
+;
+;
+	token	':I',0,0,alinput
+
+ALINPUT::
+	ld	hl,@civec	;INPUT ALLOCATION
+	jp	ebyte		;DISPLAY AND RE-ENTER BYTE
+
+	token	':O',0,0,aloutpt
+;
+ALOUTPT:
+	
+	ld	hl,@covec	;OUTPUT ALLOCATION
+	jp	ebyte		;DISPLAY AND RE-ENTER BYTE
+;
+;
+;------------------------------------------------------------------------------
+;
+;	token	'JT',0,0,jramtest
+;
+jtst::
+
+DIAGS:	CALL	BNKCHK	;CHECK BANK SWITCHING HARDWARE
+
+	call	?prmsgn
+	dc	'TESTING MEMORY BANK ONE: '
+
+	ld	a,1
+	out	(bnk$port),a	;
+
+	ld	hl,8000h
+	ld	bc,8000h
+	CALL	TSTBLK		;TEST BANK 1
+
+	call	?prmsgn
+	dc	'TESTING MEMORY BANK ZERO: '
+
+	ld	a,2
+	out	(bnk$port),a	;
+
+	ld	hl,8000h
+	ld	bc,8000h
+	CALL	TSTBLK	;TEST THIS BANK TO JUST BELOW THIS PROG.
+	JP	DIAGS	;DO IT ALL AGAIN
+
+	;
+	;THIS ROUTINE CHECKS THE MEMORY BANK SWITCHING LOGIC
+	;
+BNKCHK:	CALL	?prmsgn		;DISPLAY TEST MESSAGE ON CRT
+	dc	'TESTING BANK SELECT HARDWARE: '
+	ld	c,2
+	ld	hl,8000h
+	ld	de,2000h
+	ld	a,1
+	out	(bnk$port),a	; SELECT BANK 0
+BSTL0:	ld	(hl),a		;PUT A ONE THERE
+	cp	(hl)		;DID IT TAKE?
+	jp	nz,bser		;IF NOT IT'S A BANK SWITCH ERROR
+	add	hl,de		;ADD 16K TO TEST ADRS
+	dec	C		;DO TEST 4 TIMES
+	jp	nz,BSTL0
+	ld	a,2
+	OUT	(bnk$port),a	;SELECT BANK 1
+
+	ld	hl,8000
+	ld	c,2
+BSTL1:	ld	(hl),a		;PUT A 2 AT THIS ADDRESS
+	cp	(hl)		;DID IT TAKE?
+	jp	nz,BSER		;BANK SWITCH ERR IF NOT
+	add	hl,de		;ADD 16K TO TEST ADRS
+	dec	c
+	jp	nz,BSTL1
+	ld	a,1		;NOW BACK TO BANK 0
+	out	(bnk$port),a
+	ld	hl,0
+	dec	(hl)		;SHOULD MAKE IT ZERO
+	jp	nz, BSER	;ERR IF NOT
+
+	jð	nz,BSER
+	ld	a,(8000H)
+	cp	2
+	jp	nz,BSER
+	ld	a,(0C000H)
+	cp	2
+	jp	nz,BSER
+BSOK:	call	?prmsgn
+	dc	'O. K. '
+	ret
+
+
+BSER:	call	?prmsgc
+	dc	'BANK SELECT FAIL'
+	ret
+
+	;
+	;THIS ROUTINE TESTS A BLOCK OF MEMORY OF LENGTH BC
+	;AT BASE ADDRESS HL.  THE TEST CONSISTS OF WRITING 01H
+	;TO ALL MEMORY LOCATIONS.  THEN EACJ LOCATION IS CHECKED
+	;TO INSURE THAT IT CONTAINS 01.  THEN THAT LOCATION IS ROTATED
+	;LEFT CIRCULAR 7 TIMES.  IT THEN IS TESTED FOR A VALUE OF 80H.
+	;THEN THE NEXT LOCATION IS TESTED.  AN ERROR CONDITION
+	;DISPLAYS AN ERROR MESSAGE AND HANGS.
+	;
+	;
+TSTBLK:	PUSH	Bc
+	PUSH	Hl
+	ld	(hl),1		;PUT INITIAL TEST VALUE IN FIRST ADRS OF BLK
+	ld	D,H
+	ld	E,L
+	inc	de	;START ARDS+1 WILL BE DEST OF BLOCK MOVE
+	dec	Bc	;BLOCK LEN-1 IS LENGTH OF BLOCK MOVE
+	LDIR	;USE BLOCK MOVE TO FILL ENTIRE BLOCK WITH 01
+	POP	Hl
+	POP	Bc	;GET ADRS AND LENGTH BACK
+TBL:	ld	a,1
+	cp	(hl)	;DOES TEST LOC CONTAIN 01 AT START?
+	jp	nz,CERR	;ERR IF NOT
+			;DO 7 ROTATE LEFT CIRCULAR
+
+	rept 7
+	rlc	(hl)
+	endm
+
+				;NOW SHD BE 80H
+	ld	a,80h
+	cp	(hl)
+	jp	nz, CERR
+	inc	hl	;INCR TEST ADRS
+	dec	bc	;DECR BLOCK LEN
+	ld	a,c
+	OR	B
+	jp	nz,TBL
+	call	?prmsgn		;DISPLAY OK MESSAGE
+	dc	'O.K.'
+	ret
+
+CERR:	push	hl		;SAVE ERR ADDRESS
+	call	?prmsgn		;DISPLAY FIRST ERR MSG
+	dc	'### MEMORY FAILURE AT ADDRESS '
+	pop	hl		;GET ERR ADRS BACK
+	ld	a,h		;HI BYTE FIRST
+	CALL	phex
+	ld	a,l
+	jp	phex
+;	
+;
+;------------------------------------------------------------------------------
+; Logical I/O driver code here
+;
+;	; CONOUT
+;	;	Console Output.  Send character in <A>
+;	;			to all selected devices
+?conout::
+	push	bc
+	push	de
+	ld	c,a
+	ld	a,(@covec)	; fetch console output bit vector
+	ld	e,a
+	ld	b,0		; start with device 0
+co$next::
+	sla	e		; shift out next bit
+	jp	nc,not$odevice
+not$oready::
+	call	coster
+	or	a
+	jp	z,not$oready	; Wait for device to become available
+	call	?cout
+not$odevice::
+	inc	b		; next device number
+	ld	a,e
+	or	a		; see if any devices left
+	jr	nz,co$next	; and go find them...
+	pop	de
+	pop	bc
+	ret
+
+
+	;
+	; CONOST
+	;	Console Output Status.  Return true if
+	;		all selected console output devices
+	;		are ready.
+	;
+?conost::
+	ld	a,(@covec)	; get console output bit vector
+	push	bc
+	push	de
+	ld	e,a
+	ld	b,0		; start with device 0
+cos$next::
+	sla	e	; check next bit
+	ld	a,-1	; assume device ready
+	call	c,coster; check status for this device
+	or	a	; see if device ready
+	jr	z,coret	; if any not ready, return false
+	inc	b	; drop device number
+	ld	a,e
+	or	a
+	jp	nz,cos$next
+	or	-1	; all selected were ready, retern true
+coret::
+	pop	de
+	pop	bc
+	ret
+
+	; CONST
+	;	Console Input Status.  Return true if
+	;		any selected console input device
+	;		has an available character.
+
+?conist::
+	ld	a,(@civec)	; get console input bit vector
+	push	bc
+	push	de
+	ld	e,a
+	ld	b,0		; start with device 0
+cis$next::
+	sla	e		; check next bit
+	ld	a,0
+	call	c,?cist		; 0 = not ready
+	or	a
+	jr	nz,conret	; if any ready, return true
+	inc	b		; drop device number
+	ld	a,e
+	or	a		; see if any more selected devices
+	jp	nz,cis$next
+	xor	a		; all selected were not ready, return false
+conret::
+	pop	de
+	pop	bc
+	ret
+
+	; Conin w/Echo
+	; Otherwise same as ?conin, below
+	; 
+
+?conine::
+	call	?conin
+	push	af
+	call	?conout
+	pop	af
+	ret
+
+	; CONIN
+	;	Console Input.  Return character from first
+	;		ready console input device.
+
+?conin::
+	push	bc
+	push	de
+in$scan::
+	ld	a,(@civec)
+	ld	e,a
+	ld	b,0
+ci$next::
+	sla	e
+	ld	a,0
+	call	c,?cist
+	or	a
+	jr	nz,ci$rdy
+	inc	b		; else, next device
+	ld	a,e
+	or	a		; see if any more devices
+	jp	nz,ci$next	; go look at them
+	jp	in$scan		; loop til we find a character
+
+ci$rdy::
+	call	?cind
+	and	01111111b	; clear parity bit
+	cp	CtlC
+	jp	z,abort
+	pop	de
+	pop	bc
+	ret
+
+coster::
+		; check for output device ready, including optional
+		;	xon/xoff support
+
+	push	hl
+	
+	ld	hl,xofflist
+	ld	a,b
+	call	addAHL		; make pointer to proper xon/xoff flag
+	call	?cist		; See if this keyboard has character
+	ld	a,(hl)		; Get character or read key if any
+	call	nz,?cind
+	and	01111111b	; clear parity bit
+	cp	CtlC
+	call	z,abort
+	cp	CtlQ
+	jr	nz,not$q	; if its a ctl-Q,
+	ld	a,-1 		;	set the flag ready
+
+not$q::	cp	CtlS
+	jr	nz,not$s	; if its a ctl-S,
+
+	xor	a		; clear the flag
+not$s::	ld	(hl),a		; save the flag
+	call	?cost
+	and	(hl)		; and mask with ctl-Q/ctl-S flag
+	pop	hl
+	ret			; return this as the status
+
+ipchl::	jp	(hl)
+
+abort::	push	hl		;
+	push	af
+	ld	hl,(abvec)
+
+	inc	hl		; FFFF -> 0000
+	ld	a,h
+	or	l
+	jr	z,nabo		; ignore abort vector if FFFF
+	dec	hl
+	jp	(hl)
+
+
+nabo:
+	pop	af
+	pop	hl
+	ret
+
+;
+;------------------------------------------------------------------------------
+; Physical I/O driver code here
+;
+;
+;	B :=	0-7 = output device
+;	C := 	data to/from physical i/o driver
+;	A :=	returned flag from physical i/o driver
+
+?cist::	ld	a,b
+	or	a
+	jr	z,vioxis
+	dec	a
+	jr	z,serais
+	dec	a
+	jr	z,serbis
+nullis::xor	a
+	ret
+
+?cind::	ld	a,b
+	or	a
+	jr	z,vioxin
+	dec	a
+	jr	z,serain
+	dec	a
+	jr	z,serbin
+nullin::ld	a,1ah
+	ret
+
+?cout::	ld	a,b
+	or	a
+	jr	nz,cout0
+
+vioxod::ld	a,c
+	out	(viox$data),a
+	ret
+
+cout0::	dec	a
+	jr	nz,cout1
+
+seraod::ld	a,c
+	OUT	(sioa$data),a
+	RET
+
+cout1::	dec	a
+	jr	nz,cout2
+
+serbod::ld	a,c
+	OUT	(siob$data),a
+	RET
+
+cout2::	dec	a
+	ret	z
+	dec	a
+	ret	nz
+
+parod::	ld	a,c
+	out	(ParaA),a	;SEND DATA TO LATCH
+	ld	a,00001000b
+	out	(ParaCtl),a	; Raise strobre
+	inc	a
+	out	(ParaCtl),a	; Lower strobe
+	ret
+
+?cost::	ld	a,b
+	or	a
+	jr	z,vioxos
+	dec	a
+	jr	z,seraos
+	dec	a
+	jr	z,serbos
+	dec	a
+	jr	z,nullost
+	dec	a
+	jr	z,paros
+
+nullost::
+	or	-1
+	ret
+
+
+	; Z set if no data
+serais::in	a,(sioa$status)		; Serial port A status
+	and	RXRDY2681
+	ret	z
+	or	-1
+	ret
+
+serbis::in	a,(siob$status)
+	and	RXRDY2681
+	ret	z
+	or	-1
+	ret
+
+serain::IN	a,(sioa$data)
+	RET
+
+serbin::IN	a,(siob$data)
+	RET
+;
+vioxis::IN	a,(viox$status)	;SYSTEM CONTROL PORT
+	and	viox$rcv$rdy	;
+	ret	z
+	or	-1
+	ret
+
+vioxin::in	a,(viox$data)	;INPUT DATA
+	RET
+
+
+	; Z set if not ready
+seraos::IN	a,(sioa$status)
+	and	TXRDY2681
+	ret	z
+	or	-1
+	ret
+
+
+serbos::IN	a,(siob$status)
+	and	TXRDY2681
+	ret	z
+	or	-1
+	ret
+
+
+vioxos::IN	a,(viox$status)	;
+	and	viox$xmit$rdy	;READY TO OUTPUT?
+	ret	z
+	or	-1
+	ret
+
+paros::	in	a,(ParaB)
+	and	00000001b		; <A>=0 if ready
+	xor	00000001b
+	ret	z
+	or	-1
+	ret
+
+
+;------------------------------------------------------------------------------
+;
+; CRLF   prints a CR, LF on the console device
+;
+crlf::
+	call	?prmsgn
+	defb	cr,lf+80h
+	ret
+;
+;------------------------------------------------------------------------------
+; odecHL
+;    Print decimal number from HL in range of 0-65535
+;
+;
+odecHLb::
+	call	odecHL
+	jp	space
+odecHL::
+	push	bc
+	push	de
+	ld	bc,dectbl
+	ld	de,-10000
+nexdec::
+	ld	a,'0'-1
+odec1::
+	push	hl
+	inc	a
+	add	hl,de
+	jp	nc,stopdec
+	inc	sp
+	inc	sp
+	jp	odec1
+stopdec::
+	call	?conout
+	pop	hl
+	ld	a,(bc)
+	ld	e,a
+	inc	bc
+	ld	a,(bc)
+	ld	d,a
+	inc	bc
+	ld	a,e
+	or	d
+	jp	nz,nexdec
+	pop	de
+	pop	bc
+	ret
+;
+dectbl::
+	defw	-1000,-100,-10,-1,0
+;
+;------------------------------------------------------------------------------
+; Print A register as ascii enclosed in single quotes, a range check
+; is performed to determine if it is a printable character, If it is
+; not, then an alternate string is printed to reflect this.
+;
+;
+oascA::
+	and	01111111b	; strip parity bit
+	cp	' '		; Is it less than a space ?
+	push	af
+	call	prtick
+	pop	af
+	jp	nc,isprint	; Yes, printable
+	add	a,' '
+	push	af
+	ld	a,'^'
+	call	?conout
+	pop	af
+isprint::
+	call	?conout
+	call	prtick
+	jp	space
+
+;
+;------------------------------------------------------------------------------
+;
+; Various register print routines
+;
+;  general format of routine name O[base][register(s)]
+;   where base is one of: bin,dec,hex,asc
+;
+
+obinHL::
+	ld	a,h
+	call	obinA
+	ld	a,l
+
+obinA:	push	bc
+	push	af
+
+	ld	c,10000000b		; initial mask
+	ld	b,a
+binloop::
+	ld	a,b
+	and	c
+	jp	z,pr0
+	ld	a,'1'
+	call	?conout
+	jp	apr
+pr0::	ld	a,'0'
+	call	?conout
+apr::	rr	c
+	jp	nc,binloop
+
+	pop	af
+	pop	bc
+
+	ret
+
+
+	;
+	; Output HL in ascii based hex to conole device
+	;
+
+ohexhl::
+	ld	a,h
+	call	phex
+	ld	a,l
+	jp	phex
+
+ohexhlb::
+	call	ohexhl
+	jp	space
+
+ohexde::
+	ex	de,hl
+	call	ohexhl
+	ex	de,hl
+	ret
+
+ohexAb::
+	call	phex
+space::
+	ld	a,spc
+	jp	?conout
+prtick::
+	ld	a,60h
+	jp	?conout
+
+
+;
+;------------------------------------------------------------------------------
+; Print HL and 16b value at HL
+;
+Srcpnt::
+	call	pntmem
+	ld	a,(HL)		; 2nd byte
+SRCPNT1::
+	jp	phex
+;
+;------------------------------------------------------------------------------
+;
+;
+Pntmem::
+	call	crlf
+	dec	hl		; go back a byte
+	call	ohexhlb
+	ld	a,(HL)
+	call	ohexAb
+	inc	hl
+	ret
+;
+;------------------------------------------------------------------------------
+;
+;
+port$list::
+	ex	(SP),hl
+	ld	b,m			; length of list
+	inc	hl			; poiny hl to listy start
+more$out::
+	ld	c,(HL)
+	inc	hl
+	outi			; p(c)=(hl), hl++, b--;
+	jp	nz,more$out
+	ex	(SP),hl
+	ret
+
+;------------------------------------------------------------------------------
+;     Routines ?prtms[inac] print a character string to the console.
+;
+;    they vary on exactly what is printed, and in the way in which
+; it is passed.
+;
+;    ?prmsgi: prints string whose start address is the value on the stack
+;             a cr, lf pair is sent after the string.
+;
+;    ?prmsgn: same, but no cr, lf pair.
+;
+;    ?prmsga: HL points to string to be printed. No cr, lf sent.
+;
+;    ?prmsgc: same, but w/CR
+;
+;   all strings are terminated by a high bit set
+;
+?prmsgi::
+	ex	(SP),hl
+	push	af
+	call	?prmsga
+	call	crlf
+	pop	af
+	ex	(SP),hl
+	ret
+;
+;
+?prmsgn::
+	ex	(SP),hl
+	push	af
+	call	?prmsga
+	pop	af
+	ex	(SP),hl
+	ret
+
+?prmsgc::
+	call	?prmsga
+	jp	crlf
+
+?prmsga::
+	ld	a,(HL)		; A = (HL)
+	and	01111111b	; strip EOM bit
+	ret	z		; yes, done
+	call	?conout
+	ld	a,(HL)		; get character again
+	inc	hl		; point to next
+	or	a		; see if bit 7 is set
+	jp	p,?prmsga	;  no, continue
+	ret
+;
+;-----------------------------------------------------------------------------
+; Bank Select test
+;
+	token	'TBS',0,0,btest
+;
+btest::
+	ld	c,1
+bl2::
+	ld	a,1
+	ld	(asave),a
+	ld	b,7
+bl1::	call	bchk
+	jr	z,nexban	; ok, do next bank bit	
+
+				; failed, B = bank bit
+	call	?prmsgn
+	dc	'Bank '
+	ld	a,c
+	call	phex
+	call	?prmsgn
+	dc	' select failed on bit '
+	ld	a,b
+	call	phex
+	call	crlf
+
+nexban::
+	dec	b
+	ld	a,(asave)
+	rla
+	ld	(asave),a
+	jr	nc,bl1
+	dec	c
+	jr	nz,bl2		; do next bank
+	ret			; all done
+	
+bchk::	out	(bnk$port),a
+	ld	a,c
+	or	a
+	jr	z,zbnk
+	ld	hl,(0C000h)
+	jr	bnk
+zbnk:	ld	hl,(08000h)
+bnk:	ld	a,10101010b
+	ld	d,(hl)
+	ld	(hl),a
+	cp	(hl)
+	ld	(hl),d
+	ret	nz		; A /= 0 fail
+	ld	a,01010101b
+	ld	d,(hl)
+	ld	(hl),a
+	cp	(hl)
+	ld	(hl),d
+	ret	nz		; A /= 0 fail
+	ret			; A = 0 pass
+
+
+;-----------------------------------------------------------------------------
+;
+; Walking bit test, for 32k segment located at 08000h - 0ffffh
+;
+	token 'WB',0,0,madt
+;
+madt::
+	call	?prmsgi
+	dc	'Walking bit test - 32k segment'
+	ld	hl,8000h		; Base address
+	ld	de,8000h		; Block size
+
+madtb::	call	zbtk		; Zero the block
+madtc::	push	de
+	ld	a,4
+	cp	d
+	jp	p,madtd
+	ld	d,a
+madtd::	call	wlkad		; Test it
+	pop	hl
+	ld	a,l
+	sub	e
+	ld	l,a
+	ld	a,h
+	sbc	a,d
+	ld	h,a
+	ret	z
+	ex	de,hl
+	add	hl,bc
+	jp	madtc
+
+Bemsg::	dc	'BAD '
+Tdmsg::	dc	'Test done'
+
+zbtk::	push	de
+	push	hl
+	ld	c,0
+ztbka::	ld	(hl),c
+	inc	hl
+	dec	de
+	ld	a,e
+	or	d
+	jp	nz,ztbka
+	pop	hl
+	pop	de
+	push	de
+	push	hl
+ztbkb::	ld	a,(hl)
+	cp	c
+	call	nz,break
+	inc	hl
+	dec	de
+	ld	a,e
+	or	d
+	jp	nz,ztbkb
+	pop	hl
+	pop	de
+	ret
+
+Wlkad::	push	de
+	push	hl
+	inc	hl
+wlkda::	ld	c,11h
+wlkc::	push	bc
+	ld	(hl),c
+	push	hl
+	rept	4
+	inc	sp
+	endm
+	pop	hl
+	push	hl
+	rept	4
+	dec	sp
+	endm
+Wlkb::	ld	a,(hl)
+	ld	b,a
+	and	a
+	ex	de,hl
+	ex	(sp),hl
+	jp	nz,dnzt
+	call	chlde
+	call	z,adprt
+	jp	cont
+
+dnzt::	cp	c
+	jp	z,badd
+	call	chlde
+badd::	call	nz,adprt
+cont::	ex	(sp),hl
+	ex	de,hl
+	inc	hl
+	dec	de
+	ld	a,e
+	or	d
+	jp	nz,wlkb
+	pop	hl
+	pop	bc
+	inc	sp
+	inc	sp
+	pop	de
+	push	de
+	dec	sp
+	dec	sp
+	rl	c
+	jp	nc,wlkc
+	pop	bc
+	pop	de
+	ld	(hl),0
+	ld	a,l
+	sub	c
+	ld	l,a
+	ld	a,h
+	sbc	a,b
+	ld	h,a
+	add	hl,hl
+	call	chlde
+	ret	p
+	add	hl,bc
+	push	de
+	push	bc
+	jp	wlkda
+
+chlde::
+	ld	a,h
+	sub	d
+	ret	nz
+	ld	a,l
+	sub	e
+	ret
+
+adprt::
+	call	crlf
+	call	ohexde
+	call	space
+	ld	a,b
+	jp	adprb
+
+break::
+	call	?conist
+	ret	z
+	jp	prmptsp
+
+;
+;------------------------------------------------------------------------------
+;
+; PTEST
+;
+	token	'PT',2,2,ptest
+;
+; stack model --> end, start
+Ptest::
+.z80
+	pop	hl
+	ld	(trame),hl
+	pop	de
+	sbc	hl,de
+	ld	(ramlen),hl
+.8080
+	xchg
+	shld	trams
+
+testitagain::
+	CALL	mtest1
+	CALL	mtest2
+	CALL	mtest3
+	CALL	mtest4
+	CALL	L051A
+	jmp	testitagain
+
+mtest1::
+	lxi	h,m$rt1
+	CALL	?prmsga
+
+	mvi	a,12h		; initialize variables
+	sta	pcount		; set pattern count
+
+	lxi	h,ptrns1	; set pattern pointer
+	shld	patptr
+
+L013D::	lhld	patptr		; bc = *patptr 
+	mov	c,m		; patptr++
+	inx	h		;
+	mov	b,m		;
+	inx	h		;
+	shld	patptr		;
+
+	lxi	h,pcount	; quit if out of patterns to try
+	dcr	m
+	rz
+
+	mvi	a,00000010b
+	ana	b
+
+	cnz	L031C
+	cz	L0316
+
+	mvi	a,00000001b
+	ana	b
+	cz	L034F
+	jz	L013D
+
+
+L015E::	mov	a,m
+	cmp	c
+	cnz	L0363
+	mvi	a,00001000b
+	ana	b
+	jnz	L0173
+
+	mov	a,c
+	cma
+	mov	m,a
+	mvi	a,00000100b
+	ana	b
+	jnz	L0173
+	mov	m,c
+
+L0173::	mvi	a,00000010b
+	ana	b
+	jz	L017B
+	dcx	h
+	dcx	h
+L017B::	inx	h
+	dcx	d
+	mov	a,e
+	ora	d
+	jnz	L015E
+	call	L051A
+	jz	L013D
+	ret
+
+ptrns1::
+	dw	0000000000000000b
+	dw	0000010100000000b
+	dw	0000111111111111b
+	dw	0000010111111111b
+	dw	0000111100000000b
+	dw	0000011100000000b
+	dw	0000110111111111b
+	dw	0000011111111111b
+	dw	0000110100000000b
+	dw	0000000100000000b
+	dw	0000101100000000b
+	dw	0000001100000000b
+	dw	0000100100000000b
+	dw	0000000011111111b
+	dw	0000000111111111b
+	dw	0000101111111111b
+	dw	0000001111111111b
+	dw	0000100111111111b
+
+
+mtest2::
+	lxi	h,m$rt2
+	CALL	?prmsga
+
+	lxi	h,1
+	shld	patptr
+L01B8::	
+	mvi	c,0
+	CALL	L034C
+
+	mvi	a,14h
+	lxi	h,L0223
+	push	h
+L01C3::	
+	pop	h
+	mov	c,m
+	inx	h
+	mov	b,m
+	inx	h
+	push	h
+	dcr	a
+	push	psw
+	CALL	L0316
+L01CE::	
+	mvi	a,2
+	ana	b
+	jnz	L01F1
+	lda	patptr
+	ana	l
+	jnz	L01EB
+	lda	L0041
+	ana	h
+	jnz	L01EB
+	mvi	a,4
+	ana	b
+	jnz	L01F1
+	jmp	L01FF
+
+L01EB::	
+	mvi	a,4
+	ana	b
+	jmp	L01FF
+
+
+L01F1::	
+	mov	a,m
+	cmp	c
+	cnz	L0363
+	mvi	a,00001000b
+	ana	b
+	jnz	L01FF
+	mov	a,c
+	cma
+	mov	m,a
+L01FF::	
+	inx	h
+	dcx	d
+	mov	a,e
+	ora	d
+	jnz	L01CE
+	call	L051A
+	pop	psw
+	Ora	a
+	jnz	L01C3
+	pop	h
+	lxi	h,m$rtr1
+	call	?prmsga
+	lhld	patptr
+	call	ohexhl
+	call	L03BE
+	lhld	patptr
+	dad	h
+	shld	patptr
+	xchg
+	lxi	h,2000h
+	mov	a,l
+	xra	e
+	jnz	L01B8
+	xra	h
+	xra	d
+	jnz	L01B8
+	ret
+
+L0223::	dw	0000000000000000b
+	dw	0000100011111111b
+	dw	0000110000000000b
+	dw	0000000011111111b
+	dw	0000101000000000b
+	dw	0000010000000000b
+	dw	0000100000000000b
+	dw	0000110011111111b
+	dw	0000000000000000b
+	dw	0000101011111111b
+	dw	0000010011111111b
+	dw	0000100011111111b
+	dw	0000110000000000b
+	dw	0000010000000000b
+	dw	0000101011111111b
+	dw	0000000011111111b
+	dw	0000100000000000b
+	dw	0000110011111111b
+	dw	0000010011111111b
+	dw	0000101000000000b
+
+
+mtest3::	
+	lxi	h,m$rt3
+	CALL	?prmsga
+	mvi	c,0
+	CALL	L034C
+	lxi	h,pcount
+	mvi	m,64
+	lhld	incount
+	push	h
+L026E::	
+	pop	b
+	push	b
+	CALL	L032E
+.z80
+L0273::	
+	ld	a,(HL)
+	ld	(BC),a
+	inc	bc
+	inc	l
+	dec	de
+	ld	a,e
+	or	d
+	jp	nz,L0273
+.8080
+	CALL	L051A
+	jnz	L02A0
+	pop	b
+	mvi	a,'7'
+	add	c
+	mov	h,b
+	mov	l,a
+	push	h
+	CALL	L032E
+L028D::	ldax	b
+	cmp	m
+	cnz	L0358
+	inx	b
+	inr	l
+	dcx	d
+	mov	a,e
+	ora	d
+	jnz	L028D
+	CALL	L030B
+	jnz	L026E
+
+L02A0::	
+	pop	b
+	RET
+
+
+mtest4::
+	lxi	h,m$rt4
+	CALL	?prmsga
+	mvi	c,0
+	CALL	L034C
+	lhld	ramlen
+	mov	a,h
+	cpi	0
+	jnz	L02B9
+	mov	a,l
+	cpi	2
+	rnc
+L02B9::	lxi	h,pcount
+	mvi	m,64
+	lhld	incount
+	push	h
+L02C2::	pop	b
+	push	b
+	call	L033D
+
+
+.z80
+L02C7::	
+	ld	a,(HL)
+	ld	(BC),a
+	inc	bc
+	inc	l
+	ld	a,(HL)
+	ld	(DE),a
+	dec	de
+	inc	l
+	inc	l
+	ld	a,c
+	xor	e
+	jp	nz,L02C7
+	xor	b
+	xor	d
+	jp	nz,L02C7
+.8080
+	CALL	L051A
+	jnz	L0309
+	pop	b
+	mvi	a,'7'
+	ADD	c
+	mov	h,b
+	mov	l,a
+	push	h
+	CALL	L033D
+L02EA::	ldax	b
+	cmp	M
+	cnz	L0358
+	inx	b
+	inr	l
+	ldax	d
+	cmp	M
+	cnz	L0358
+	dcx	d
+	inr	l
+	inr	l
+	mov	a,c
+	xra	e
+	jnz	L02EA
+	xra	B
+	xra	d
+	jnz	L02EA
+	CALL	L030B
+	jnz	L02C2
+
+L0309::	pop	h
+	RET
+
+L030B::	CALL	L051A
+	xri	00000001b
+	rz
+	lxi	h,pcount
+	dcr	m
+	ret
+
+
+L0316::	lhld	trams
+	jmp	L0320
+
+
+L031C::	lhld	trame
+	dcx	h
+L0320::	xchg
+	lhld	ramlen
+	xchg
+	ret
+
+
+L032E::	CALL	L0316
+swap$hl$BC::
+	push	h
+	push	b
+	pop	h
+	pop	b
+	ret
+
+L033D::	lhld	trams
+	xchg
+	lhld	trame
+	CALL	swap$hl$BC
+	dcx	d
+	dcx	d
+	mov	a,c
+	xra	e
+	ani	1
+	rz
+	dcx	d
+	ret
+
+L034C::	CALL	L0316
+L034F::	mov	m,c
+	inx	h
+	dcx	d
+	mov	a,e
+	ora	d
+	jnz	L034F
+	RET
+
+L0358::	push	h
+	push	d
+	push	b
+	mov	d,m
+	CALL	swap$hl$BC
+	mov	c,d
+	jmp	L0366
+
+
+L0363::	push	h
+	push	d
+	push	b
+L0366::	push	psw
+	xra	c
+	push	psw
+	push	h
+	lxi	h,m$rtr4
+	CALL	?prmsga
+	pop	h
+	CALL	ohexhl
+	lxi	h,m$rte
+	CALL	?prmsga
+	pop	psw
+
+	CALL	phex
+	CALL	L03BE
+	CALL	L0389
+	CALL	L051A
+	jmp	L04CB
+
+L0389::	push	h
+	lxi	h,m$rtr2
+	CALL	?prmsga
+	pop	h
+	ret
+
+
+phex::	push	psw
+	rrc
+	rrc
+	rrc
+	rrc
+	call	phex1
+	pop	psw
+phex1::	ani	00001111b
+	adi	90h
+	daa
+	aci	40h
+	daa
+	jmp	?conout	
+
+L03BE::	lxi	h,m$rtr1
+	jmp	?prmsga
+
+m$rtr1::dc	'Address:  '
+m$rtr2::dc 	'  BAD BITS: '
+m$rt1::	dc	'1-Boomerang'
+m$rt2::	dc	'2-HALF SLOW'
+m$rtr4::dc	'ADDRESS BIT '
+m$rt3::	dc	'4-SCRAMBLE'
+m$rt4::	dc	'8-SPIRAL'
+m$rte::	defb	bell+80h
+
+	xthl
+	push	d
+	push	b
+	push	psw
+	pchl
+
+L04CB::	
+	pop	h
+	pop	psw
+	pop	b
+	pop	d
+	xthl
+	ret
+
+L04D9::	
+	pop	b
+L04DA::	
+	pop	d
+	pop	h
+L04DC::	
+	xthl
+	ret
+
+L04F5::	
+	call	?conist
+	cpi	up
+	jz	testitagain
+	ret
+
+L051A::	
+	CALL	?conist
+	cnz	L04F5
+	ret
+
+
+;-----------------------------------------------------------------------------
+; Tma test for context ram
+;
+;
+; NOTE: This test will work under the MPU-Z since you *can* write to RAM
+;       'underneath' the MPU-Z local RAM/ROM, As long as you don't mind
+;	possibly altering both!
+;
+;
+;
+	token	'TMAT',0,0,tmat
+.z80
+;
+Tmat::	call	initvars		; set error count
+
+Tmat0:	ld	hl,9000h		; first free location
+					;
+
+	ld	bc,8000h		; How many counts to run
+
+loop::	ld	(source),hl
+	ld	(hl),l			; store hl at hl
+	ld	a,h
+	inc	hl
+	ld	(hl),a
+	dec	hl
+
+	ex	de,hl
+	push	bc
+	push	de
+
+	ld	hl,1			; 1 block to move
+	push	hl
+	ld	hl,(source)		; move from (source)
+	push	hl
+	ld	hl,xbuf			; to destination
+	push	hl
+	ld	hl,0000			; use ext addr of 0/0
+	push	hl
+	call	?xmove
+
+	pop	de
+	pop	bc
+
+l1end::	ld	hl,(xbuf)
+	ex	de,hl
+	ld	a,h
+	cp	d
+	jp	nz,fail		; passes so far...
+	ld	a,l
+	cp	e
+	jp	nz,fail
+
+	inc	hl
+	dec	bc
+
+	ld	a,b
+	or	c		;
+	jp	nz,loop		; more to go ?
+
+
+	call	ppass		; bump pass counter
+
+
+	push	hl
+        call	tmstat
+	pop	hl
+
+	jp	tmat0		; Do it again Sam...
+
+
+fail::	call	pfail
+	ld	hl,(source)
+	jp	loop
+	
+tmstat:
+	call	?prmsgn
+	dc	'Omnidisk DMA test : Passes - '
+	ld	hl,(passes)
+	call	odecHL
+	call	?prmsgn
+	dc	' Failures - '
+	ld	hl,(failures)
+	call	odecHL
+	call	?prmsgn
+	defb	cr or 80h
+	call	?conist
+	jr	nz, tmaabort		; Abort on any character
+	ret
+
+
+tmaabort:
+
+	ld	(abvec),hl
+	jp	(hl)
+
+;
+;
+;------------------------------------------------------------------------------
+;
+;
+	token	'?',0,0,what
+what::
+	ld	hl,botlist		; point to end of list
+what1::
+	call	?prmsga
+	call	space
+	ld	a,(HL)			; and get it
+	inc	hl
+	ld	h,(HL)
+	ld	l,a			; pointer to next command
+	or	h			; see if NULL ptr
+	jr	nz,what1
+	jp	crlf
+;
+;--------------------------------------------------------------------
+; Branch to memory addr
+;
+	token	'J',1,1,jump
+;
+jump::
+	pop	hl			; get jump point
+	pop	de			; remove return addr
+	jp	(hl)
+;
+;
+;------------------------------------------------------------------------------
+;
+; Set/check clock
+;
+;
+	token	'STIM',0,0,sclock
+
+Sclock::
+	ld	hl,romcur	; make copy of screen in ram for updating
+	ld	de,cur-1	; source
+	ld	bc,endcur-romcur; length
+	ldir
+	call	right0		;SET CURENT DIGIT STUFF TO FIRST FIELD
+
+stim0::	call	?prmsgi		;
+	defb	cr,lf,cr,lf,' --DATE--  --TIME--',cr,lf
+	dc	            ' MM/DD/YY  HH:MM:SS'
+
+stim1::	call	pdt		; Get and print date/time
+stim2::	call	?conist		; get char/status
+	jp	nz,stim3		;IF KEYSTROKE TO PROCESS
+;
+	ld	c,0		;CODE FOR 1'S DIGET OF SECONDS
+	CALL	GCN		;GET CLOCK NIBBLE
+	ld	c,a
+	ld	a,(lastsec)
+	xor	C
+	jp	nz,STIM1		;IF SECONDS TICK
+	jp	STIM2		;ELSE JUST CHECK KEYBOARD
+.8080
+
+romcur::defb	cr,' mm/dd/yy  hh:mm:ss AM WEDNESDAY',cr+80h
+endcur::
+
+stim3::
+	call	?conin		; Get a character
+	cpi	CtlC		; on ^C
+	jz	prmptsp		;   Exit to monitor
+	cpi	CR		; on return
+	jz	prmptsp		;   Exit to monitor
+
+	lxi	H,STIM1
+	PUSH	H		;SET 'RTN ADDRESS' FOR WHATEVER WE CALL
+	lxi	H,RIGHT
+	PUSH	H		;GO RIGHT AFTER DIGIT SET
+	LHLD	CURDSET
+	SUI	'0'
+	JM	STIM4		;IF NOT A DIGIT
+	CPI	10
+	JM	STIM5		;IF A DIGIT
+STIM4::	POP	H		;NOT A DIGIT -- DONT GO RIGHT
+	ADI	'0'
+	LHLD	CURDUP
+
+	CPI	'+'
+	JZ	STIM5		;IF TO BUMP
+	CPI	'.'
+	JZ	STIM5		;ALSO BUMP ON PERIOD
+	CPI	'>'
+	JZ	STIM5		;AND ON >
+
+	LHLD	CURDDN
+	CPI	'-'
+	JZ	STIM5		;IF TO UNBUMP
+	CPI	','
+	JZ	STIM5		;ALSO UNBUMP ON COMMA
+	CPI	'<'
+	JZ	STIM5		;AND ON <
+
+	CPI	BKspc
+	JZ	LEFT		;PREVIOUS FIELD
+
+	ori	00100000b	; convert to LOWER CASE
+
+	cpi	's'
+	JZ	EXACTSEC	;IF TO FORCE EXACT SECOND
+	cpi	't'
+	JZ	ROUND10		;IF TO ROUND TO NEAREST 10 SECONDS
+	cpi	'm'
+	JZ	ROUNDMIN	;IF TO ROUND TO NEAREST MINUTE
+	cpi	'h'
+	JZ	HALT		;IF TO HALT CLOCK
+
+	JMP	RIGHT		;NEXT FIELD
+
+
+STIM5::	PUSH	H		;PROCESS ADDRESS
+	PUSH	PSW
+	LDA	CURDCTL
+	MOV	C,A
+	LDA	CURDCUR
+	MOV	E,A
+	MVI	D,0
+	lxi	H,CUR
+	DAD	D		;<HL> = ADDRESS OF WHERE TO STORE UPDATED DIGIT
+	POP	PSW
+	RET			;GO PROCESS KEYBOARD BYTE
+;
+;	PDT - GET AND PRINT DATE AND TIME
+;
+PDT::
+	MVI	C,0AH		;GET CLOCK DATE MONTH HIGH
+	lxi	H,DATMM
+	call	GSDIGIT	
+	mvi	c,9		;GET CLOCK DATE MONTH LOW
+	lxi	H,DATMM+1
+	call	GSDIGIT
+	mvi	c,8		;GET CLOCK DATE DAY HIGH
+	lxi	H,DATDD
+	call	gsdigit
+	mvi	c,7		;GET CLOCK DATE DAY LOW
+	lxi	H,DATDD+1
+	call	GSDIGIT
+	mvi	c,0ch		;GET CLOCK DATE YEAR HIGH
+	lxi	H,DATYY
+	call	GSDIGIT
+	mvi	c,0bh		;GET CLOCK DATE YEAR LOW
+	MVI	C,0BH
+	lxi	H,DATYY+1
+	call	GSDIGIT
+	mvi	c,5		;GET CLOCK TIME HOURS HIGH
+	lxi	H,TIMHH
+	CALL	GSDIGIT
+	MOV	A,M
+	ANI	33H		;STRIP OUT MODE BITS
+	MOV	M,A
+	mvi	c,4		;GET CLOCK TIME HOURS LOW
+	lxi	H,TIMHH+1
+	call	GSDIGIT
+	mvi	c,3		;GET CLOCK TIME MINUTES HIGH
+	lxi	H,TIMMM
+	call	gsdigit
+	mvi	c,2		;GET CLOCK TIME MINUTES LOW
+	lxi	H,TIMMM+1
+	call	GSDIGIT
+	mvi	c,1		;GET CLOCK TIME SECONDS HIGH
+	lxi	H,TIMSS
+	call	GSDIGIT
+	mvi	c,0			;GET CLOCK TIME SECONDS LOW
+	lxi	H,TIMSS+1
+	call	GSDIGIT
+;
+GAMPMF::				;GET AM/PM/24-HOUR FLAG
+	MVI	C,5
+	CALL	GCN		;GET CLOCK NIBBLE
+	lxi	H,'TM'		;MILITARY TIME OR 24-HOUR FORMAT
+	CPI	8
+	JP	GAMPMX		;IF 24-HOUR FORMAT
+	lxi	H,'MA'
+	ANI	4
+	JZ	GAMPMX		;IF AM
+	lxi	h,'MP'		;ELSE SET FOR PM
+GAMPMX::
+	SHLD	TIMAP
+	mvi	c,6		;GET DAY OF WEEK
+	lxi	H,DAYOW
+	CALL	GCN		;GET CLOCK NIBBLE
+	MOV	E,A
+	RLC
+	RLC
+	RLC			;NIBBLE * 8
+	ADD	E		;NIBBLE * 9
+	MVI	D,0
+	MOV	E,A		;<DE> = NIBBLE * 9
+	lxi	H,DOWTBL
+	DAD	D		;<HL> = ADDRESS OF GIVEN DAY OF WEEK
+	lxi	D,DAYOW		;DESTINATION FOR DAY OF WEEK
+.z80
+	ld	bc,9		; Entry length of day-of-week table
+Getdow1::
+
+	ldir			; move BC bytes from (HL) to (DE)
+.8080
+;
+	MVI	C,0
+	CALL	GCN		;GET CLOCK NIBBLE
+	STA	LASTSEC
+;
+	lxi	h,cur-1		; Point to cr in front of cur
+	call	?prmsga
+
+	LDA	CURDCUR		;FORSPACE COUNT
+XXLOOP::
+	PUSH	PSW
+	mvi	a,rt		; MOVE CURSOR TO RIGHT
+	call	?conout
+	POP	PSW
+	DCR	A
+	JNZ	XXLOOP
+	RET
+
+
+EXACTSEC::
+	MVI	C,0DH		;** ANY OUTPUT TO ADDRESS 0D
+	CALL	SETDIG		;** RESETS THE SECONDS FRACTION
+	JMP	STIM1
+;
+;	ROUND TO NEAREST 10 SECONDS
+;
+ROUND10::
+	MVI	C,0		;1'S OF SECONDS CODE
+	CALL	GCN		;GET CLOCK NIBBLE
+	CPI	5
+	JC	RMIN6		;IF ALL WE HAVE TO DO IS ZERO LOW SECONDS
+	MVI	C,1		;10'S OF SECONDS CODE
+	CALL	GCN
+	INR	A
+	CPI	6
+	JC	RMIN5		;IF WE CAN SIMPLY BUMP 10'S OF SECONDS
+	JMP	RMIN1		;ELSE...BUMP MINUTES
+;
+;	ROUND TO NEAREST MINUTE
+;
+ROUNDMIN::
+	mvi	c,1		;10'S OF SECONDS CODE
+	CALL	GCN		;GET CLOCK NIBBLE
+	CPI	3
+	JC	RMIN4		;IF 00.29 SECONDS
+RMIN1::	MVI	C,2		;1'S OF MINUTES CODE
+	CALL	GCN		;GET CLOCK NIBBLE
+	INR	A		;BUMP MINUTE
+	CPI	10
+	JC	RMIN3		;IF WE DONT HAVE TO CARRY INTO 10'OF MINUTES
+	MVI	C,3		;10'S OF MINUTES CODE
+	CALL	GCN		;GET CLOCK NIBBLE
+	INR	A
+	CPI	6
+	JC	RMIN2		;IF MINUTES DO NOT OVERFLOW INTO HOURS
+	XRA	A		;ELSE...SIMPLY SET MIN=00 AND IGNORE HOURS
+RMIN2::	CALL	SETDIG		;SET 10'S OF MINUTES
+	XRA	A
+	MVI	C,2		;1'S OF MINUTES CODE
+RMIN3::	CALL	SETDIG		;SET DIGIT INTO CLOCK
+RMIN4::	XRA	A
+RMIN5::	MVI	C,1		;10'S OF SECONDS CODE
+	CALL	SETDIG		;SET DIGIT INTO CLOCK
+RMIN6::	MVI	C,0		;1'S OF SECONDS CODE
+	XRA	A
+	CALL	SETDIG		;SET DIGIT INTO CLOCK
+	JMP	EXACTSEC
+
+HALT::
+	MVI	C,0DH		;** ANY OUTPUT TO ADDRESS 0D
+	CALL	SETDIG		;** RESETS THE SECONDS FRACTION
+
+	call	?conist		; get char/status
+
+	JZ	HALT		;IF NO KEYSTROKE TO PROCESS
+	JMP	STIM3		;ELSE...GO PROCESS
+;
+;	GSDIGIT - GET AND STORE DIGIT FROM CLOCK
+;
+GSDIGIT::
+	CALL	GCN		;GET CLOCK NIBBLE
+	ADI	'0'		;CONVERT DIGIT TO ASCII
+	MOV	M,A		;STORE
+	RET
+;
+;	GCN - GET CLOCK NIBBLE
+;
+;	ENTRY	<C> = CODE BYTE
+;	EXIT	<A> = CLOCK NIBBLE
+;
+GCN::	IN	CSTAT
+	ADD	A
+	JNC	GCN		;ASSURE CLOCK NOT BUSY
+.z80
+	ld	a,c
+	out	(CADR),a	; Select digit
+	in	a,(cdata)
+	and	00001111b
+	ret
+.8080
+;
+;	SETDIG - SET DIGIT
+;
+;	ENTRY::	<A> = DIGIT, 00-09H
+;		<C> = CLOCK CODE BYTE
+;
+SETDIG::
+	PUSH	PSW
+sdg1::	in	cstat
+	add	a
+	jnc	sdg1		; Wait until non-busy, if need be
+	mov	a,c
+	out	cadr		; select digit
+	pop	psw
+	out	cdata		; output data
+	ret
+;
+;	UPVAL:: digit++
+;
+UPVAL::
+	CALL	GCN		;GET CLOCK NIBBLE
+	inr	a
+	cpi	10
+	JM	SETDIG		;IF NOT > 9 THEN SET INCREMENTED DIGIT
+	XRA	A
+	JMP	SETDIG		;ELSE SET ZERO
+;
+;	DNVAL - DECREMENT DIGIT BY ONE
+;
+DNVAL::
+	CALL	GCN
+	DCR	A
+	JP	SETDIG		;IF NO UNDERFLOW THEN SET DECREMENTED DIGIT
+	MVI	A,9		;ELSE...
+	JMP	SETDIG		;    ...SET 9
+;
+;	TAMPMF - TOGGLE ("ROLL" WOULD BE A BETTER WORD) AM/PM/24-HOUR FLAG
+;
+TAMPMF::
+	CALL	GCN
+	ADI	4		;AM=>PM, PM=>24, 24=>??
+	CPI	0CH
+	JM	SETDIG		;IF WE HAVE VALID FLAG
+	ANI	3		;ELSE...??=>AM
+	JMP	SETDIG
+;
+;	SETDOW - SET DAY OF WEEK
+;
+SETDOW::
+	DCR	A
+	JM	SETDOW1		;WE DONT ALLOW DAY=0
+	CPI	7
+	JM	SETDIG		;ALLOW 1-7 (WHICH SETS 0-6 INTO CLOCK)
+SETDOW1::
+	POP	H		;PULL RETURN TO "RIGHT"
+	RET
+;
+;	UPDOW - BUMP DAY OF WEEK
+;	DNDOW - UNBUMP DAY OF WEEK
+;
+UPDOW::
+	CALL	GCN
+	INR	A
+	CPI	7
+	JM	SETDIG		;IF NOT PAST SATURDAY
+	XRA	A
+	JMP	SETDIG
+DNDOW::
+	CALL	GCN
+	DCR	A
+	JP	SETDIG		;IF NOT WEEKEND WRAPAROUND
+	MVI	A,6		;ELSE SUNDAY TO SATURDAY WANTED
+	JMP	SETDIG
+;
+;	SETMMH - SET MONTH HIGH
+;	UPMMH  - UP (OR DOWN) MONTH HIGH
+;
+UPMMH::
+	CALL	GCN
+	ANI	1
+	XRI	1
+SETMMH::
+	CPI	2
+	JP	SETDOW1		;IF NOT 0 OR 1
+	JMP	SETDIG
+;
+;	SETHH - SET HOURS
+;	HHHUP - INCREASE HOURS HIGH DIGIT
+;	HHHDN - DECREASE HOURS LOW DIGIT
+;
+SETHHH::
+	MOV	B,A		;SAVE DIGIT TO SET HOURS TO
+	CPI	2
+	MVI	A,8		;24-HOUR MODE BIT
+	JZ	SETHHH1		;IF HIGH HOURS SET TO 2 -- GO SET 24-HOUR MODE
+	JP	SETDOW1		;IF ATTEMPT TO SET HIGH HOURS > 2
+	CALL	GCN		;GET CLOCK NIBBLE (FOR MODE BITS)
+	ANI	0CH		;DROP DIGIT, KEEP MODE
+SETHHH1::
+	ORA	B
+	JMP	SETDIG
+
+
+HHHUP::
+	lxi	h,hhhtbl
+	call	gcn
+	mov	e,a
+	mvi	d,0
+	dad	d
+	mov	a,m
+	jmp	setdig
+;
+;	0123456789ABCDEF  DIGIT FROM CLOCK
+;	14  50  9A8	  IS SET TO
+;
+HHHTBL::
+	defb	1,4,0,0,5,0,0,0,9,0AH,8
+;
+;	LEFT -- MOVE CURSOR (AND OTHER INTERNAL POINTERS)
+;		ONE FIELD TO THE LEFT
+;
+LEFT::
+	LHLD	CURDPTR
+	lxi	D,-8		;WIDTH OF TABLE IS 8
+	DAD	D
+	SHLD	CURDPTR
+	lxi	D,-FLDTBL
+	DAD	D
+	JC	RIGHT2		;IF NOT BEFORE THE TOP OF THE TABLE
+	lxi	H,FLDTBLL	;LAST ENTRY IN TABLE
+	JMP	RIGHT1		;GO USE THAT ONE
+;
+;	RIGHT - MOVE CURSOR (AND OTHER INTERNAL POINTERS)
+;		ONE FIELD TO THE RIGHT
+;
+RIGHT::
+	LHLD	CURDPTR
+	lxi	D,8		;WIDTH OF TABLE
+	DAD	D
+	SHLD	CURDPTR
+	MOV	A,M
+	ORA	A
+	JP	RIGHT1		;IF NOT AT END OF TABLE
+RIGHT0::
+	lxi	H,FLDTBL
+RIGHT1::
+	SHLD	CURDPTR
+RIGHT2::
+	LHLD	CURDPTR
+	lxi	D,CURDTBL
+	lxi	b,8
+
+;  move B bytes from (HL) to (DE)
+;
+.z80
+right3:2
+	ldir
+	ret
+;
+;
+dowtbl::
+	defb	'Sunday   '
+	defb	'Monday   '
+	defb	'Tuesday  '
+	defb	'Wednesday'
+	defb	'Thursday '
+	defb	'Friday   '
+	defb	'Saturday '
+;
+;
+FLDTBL::
+	defb	1,10			;MONTH HIGH
+	dw	SETMMH,UPMMH,UPMMH
+	defb	2,9			;MONTH LOW
+	dw	SETDIG,UPVAL,DNVAL
+	defb	4,8			;DAY OF MONTH HIGH
+	dw	SETDIG,UPVAL,DNVAL
+	defb	5,7			;DAY OF MONTH LOW
+	dw	SETDIG,UPVAL,DNVAL
+	defb	7,12			;YEAR HIGH
+	dw	SETDIG,UPVAL,DNVAL
+	defb	8,11			;YEAR LOW
+	dw	SETDIG,UPVAL,DNVAL
+	defb	11,5			;HOURS HIGH
+	dw	SETHHH,HHHUP,HHHUP
+	defb	12,4			;HOURS LOW
+	dw	SETDIG,UPVAL,DNVAL
+	defb	14,3			;MINUTES HIGH
+	dw	SETDIG,UPVAL,DNVAL
+	defb	15,2			;MINUTES LOW
+	dw	SETDIG,UPVAL,DNVAL
+	defb	17,1			;SECONDS HIGH
+	dw	SETDIG,UPVAL,DNVAL
+	defb	18,0			;SECONDS LOW
+	dw	SETDIG,UPVAL,DNVAL
+	defb	20,5			;AM/PM/24-HOUR INDICATION
+	dw	TAMPMF,TAMPMF,TAMPMF
+FLDTBLL::
+	defb	23,6			;DAY OF WEEK (LAST ENTRY IN TABLE)
+	dw	SETDOW,UPDOW,DNDOW
+	defb	-1			; end of list marker
+;
+;------------------------------------------------------------------------------
+;
+;  ?XMOVE
+;  Move across 64k boundaries
+;
+;
+; stack model
+; from the top  ------>   fb/tb, dest, source, nblocks
+;
+
+?xmove::
+	pop	ix
+	ld	a,oc$MOVM		; Omni move command
+	call	?sendcmd
+	pop	bc
+	pop	de
+	call	sendadd			; dma$dst sent
+	ld	c,b
+	pop	de
+	call	sendadd			; dma$src sent
+	pop	de
+	ld	a,e
+	call	?sendcmd		; # of blocks to move
+	call	?onelist
+	defb	oc$gens			; Get general status
+	call	?inchar
+	push	ix
+	ret
+
+
+sendadd:
+	ld	a,e
+	call	?sendcmd
+	ld	a,d
+	call	?sendcmd
+	ld	a,c			; ext address for destination
+	jp	?sendcmd		; dma$dst sent
+	
+
+
+
+	; bc=length
+	; de=destination
+	; hl=source
+
+move$man::
+	ldir		; use Z80 block move instruction
+	ret
+
+;
+;------------------------------------------------------------------------------
+;
+; ; ; ; Configuration for disk i/o
+; ;
+;
+;
+write$delay	defl	6		; Write hold delay in 250ms ticks, 
+;					; 1-255
+unload$delay	defl	10		; Max length of time between last disk
+;					; access and head unload in 250ms ticks
+step8		defl	3		; 8" floppy step rate in ms, 1-16 ms
+load8		defl	10		; 8" head load time in ms, 0-255 ms
+settle8		defl	10		; 8" Head settle time after seek in ms
+;					; 0-255ms
+step5		defl	2		; 5" floppy track-to-track step time in ms
+;					; 2-32 ms, rounded up to even internally
+load5		defl	10		; 5" floppy head load time, 0-255ms
+settle5		defl	10		; 5" head settle time after seek in ms
+;					; 0-255ms
+;
+;------------------------------------------------------------------------------
+
+fdisk8	defl	10H		;Omni device TYPE FOR 8" FLOPPY
+fdisk5	defl	14H		;Omni device TYPE FOR 5" FLOPPY
+hdisk	defl	18H		;Omni device TYPE FOR HARD DISK
+;
+dev$A	defl	fdisk8+0	; set A:: for 8" floppy
+dev$B	defl	fdisk5+0	; set B:: for 5" floppy
+dev$C	defl	hdisk+0		; Set C:: for hard disk unit 0
+hdlu$0	defl	'C'-'A'		;  select as 'C' (2)
+
+
+	call ?cmdlist
+	defb endlis-$-1		; Length of command list
+	defb oc$mode		; DMA mode or not ?
+
+	defb 0			; Don't use dma
+
+	; Define floppy disk parameters
+	;
+
+	defb 	oc$sfdp
+	defb 	write$delay,		unload$delay
+	defb	step8,			step5
+	defb	load8,			load5
+	defb	settle8,		settle5
+
+	; Define logical-to-physical mappings
+	;
+
+	defb oc$dlds,0,dev$A
+	defb oc$dlds,1,dev$B
+	defb oc$dlds,2,dev$C
+
+	;
+	; Define Hard disk stuff
+	;
+
+	defb	oc$hdpr		; Omni command ::*Set hard disk parameters
+	defb	6		; 		*Number of heads
+				;		 above *physical* cylinder )
+	defb	0fh		;		*Hard disk step rate
+				;		 (0=compiled seek)
+;
+;	; Hard disk controller type
+;	;
+;	; wd1000-xx --> crc --> 020h
+;	; wd1001-xx --> ecc --> 0a0h
+;	; wd1002-xx --> ecc --> 0a0h
+;	;
+
+	defb	0a0h		; hd$ctlr;	*Controller type
+	defb	oc$hdtb		; Omni command:: Set hard disk table
+	defb	'D'-'A'		; Logical unit for first logical hard disk
+	defb	0		; Physical hard disk select code
+				; ( 0, 8, 10h, 18h  only )
+	defw	0		; Physical track offset of following o/s block
+				; NOT cp/m offset in dpb
+	defb	17		; Length of following os block (dpb for cp/m+)
+	defw	64		; SPT:: logical records per track
+	defb	05		; BSH::
+	defb	31		; BLM:: 4K allocation unit (Table 3.4)
+	defb	01		; EXM:: Extent mask (Table 3.5)
+	defw	1799		; DSM:: # of blocks - 1
+	defw	1024-1		; DRM:: # of directory entries - 1
+	defw	00ffh		; AL0::
+	defw	0000		; CKS:: no checksumming
+	defw	2		; OFF:: track on which directory starts
+	defb	00		; PSH
+	defb	00		; PHM
+endlis::
+	defb	-1
+
+ 
+;------------------------------------------------------------------------------
+; GETLINE
+;   get a line from console to buffer
+;
+;
+cancelline::
+	call	crlf
+getline::
+	ld	hl,cbuff
+	ld	d,0
+	ld	e,cbuffsz		; size of buffer
+
+getmore::				; e = max, d = count
+	call	?conine			; get a character
+	cp	CtlW
+	jp	z,repline
+	cp	CtlX			; Cancel
+	jp	z,cancelline
+	cp	BKspc
+	jp	z,backup
+	cp	rub
+	jp	z,backup
+	call	toupper
+
+	ld	(hl),a		; if not a special char, put in buffer
+	inc	d
+	inc	hl
+	cp	cr			; Is it a CR ?
+	jp	z,gotcr
+
+	ld	a,d
+	cp	e
+	jp	c,getmore			; will more fit ?
+
+gotcr::
+	ld	c,d			; return count in C register
+	ld	a,c
+	ld	(oldcnt),a	
+	ret
+
+repline::
+	ld	a,d
+	or	a
+	jr	z,getmore
+	ld	a,(oldcnt)
+	ld	d,a
+	jr	gotcr
+
+backup::
+	ld	a,d
+	or	a
+	jp	z,cancelline
+	dec	d
+	dec	hl
+	push	hl
+	ld	hl,bsb
+	call	?prmsga
+	pop	hl
+	jp	getmore
+
+;	
+bsb::	defb	spc,BKspc+80h
+;
+toupper::
+	cp	'A'+20H		; LOWER CASE A
+	ret	c		; RETURN IF < L.C. A
+	cp	'Z'+21H		; L.C. Z +1
+	ret	nc		; RETURN IF > L.C. Z
+	xor	00100000b	; CONVERT TO UPPER CASE
+	RET
+;
+;------------------------------------------------------------------------------
+;
+;  Terminal mode..
+;  Enter terminal mode until 5 (five) escapes in tandem are encountered or
+;  reset.
+;
+;  Send data from one device to another
+;
+;  Only VIO-X <----------------> ZIOA
+;
+;       ZSIOA <----------------> ZSIOB
+;
+;	ZSIOA <----------------> ZSIOB
+;                     ^
+;                     |
+;                   VIO-X
+;
+;
+;           connections are implemented.
+;
+	token	'TERM',0,0,termode
+;
+
+termode::
+	ld	hl,-1
+	ld	(abvec),hl		; No Ctl-C aborts allowed here..
+
+	call	?conin
+	cp	esc
+	jr	nz,nesc
+	push	af
+	ld	a,(ecount)		; If it was an escape then down
+	dec	a			; counter for possible
+	ld	(ecount),a		; abort sequence intercept
+	jr	z,termabrt
+	pop	af
+	jr	nterm
+
+nesc:	push	af
+	ld	a,5
+	ld	(ecount),a
+	pop	af		; clear escape count if broken sequence
+
+nterm:	call	?conout
+	jp	termode
+
+
+termabrt:
+	pop	af
+	ret
+;
+;------------------------------------------------------------------------------
+;
+; Set extended address latch from console
+;
+	token 'SE',1,1,elatch
+;
+elatch::
+	pop	hl		; get value in A
+	ld	a,l
+	out	(extadr),a
+	ret
+
+;------------------------------------------------------------------------------
+; Auto-Baud for SCN2681 series
+;  apn , 19 Jul 85
+;  a problem of multiple time scales, of the first order.
+;
+;
+	token 'ZB',0,1,ibt,ibbaud
+	token 'ZA',0,1,iat,iabaud
+
+iabaud::ld	c,csra
+	jp	ib
+
+ibbaud::ld	c,csrb
+	jp	ib
+
+ibt::	ld	c,csrb
+	jr	gb
+
+iat::	ld	c,csra
+gb::	ld	a,66h
+	out	(c),a		; set to 1200 baud
+gbagain::
+	ld	de,-1		; timeout loop value
+
+ta::	dec	de
+	ld	a,e
+	or	d
+	jr	nz,ta1		; must be 19.2k if 0
+
+	ld	a,0cch		; value for 19.2kbps
+	jp	obv
+
+ta1::	in	a,(c)
+	and	1
+	jp	z,ta		; try again for a character
+
+	inc	c
+	inc	c
+	in	a,(c)		; caught one...
+				; look it up in the magic table of values
+	dec	c
+	dec	c
+
+	ld	e,a
+
+	ld	hl,rvaltbl-1
+lokmore::
+	inc	hl
+	ld	a,m
+	or	a
+	jp	z,gbagain	; try again
+	inc	hl		; prep pointer to baud rate, if a hit
+	cp	e
+	jp	nz,lokmore	; no match, check some more
+
+				; found match, so set the baud
+	ld	a,(hl)
+obv::	out	(c),a
+	ret
+
+;
+;------------------------------------------------------------------------------
+; Table of magic values
+;
+
+rvaltbl::
+	defb	10000000b,	044h		; 300 bps
+	defb	00100000b,	066h		; 1.2kbps
+	defb	11111000b,	088h		; 2.4kbps
+	defb	11110100b,	088h		; 2.4kbps
+	defb	11111110b,	099h		; 4.8kbps
+	defb	11111111b,	0bbh		; 9.6kbps
+	defb	0				; data structure terminator
+
+;------------------------------------------------------------------------------
+; Initialize baud rate for CSR (C)
+; to decimal (BCD) value in D register
+;
+ib::	pop	de		; baud in de
+	ld	hl,baudtbl
+ib3::
+	ld	a,(hl)
+	inc	hl
+	cp	-1
+	jr	z,invbaud
+	cp	d
+	jr	z,ib2
+	inc	hl
+	jr	ib3
+
+ib2::	ld	a,(hl)
+	out	(c),a		; output to clock select port
+	ret
+
+invbaud::
+	call	?prmsgi
+	dc	'Invalid baud rate'
+	jp	prmptsp
+
+
+baudtbl::
+	defb	92h,0cch
+	defb	96h,0bbh
+	defb	48h,099h
+	defb	24h,088h
+	defb	12h,066h
+	defb	03h,044h
+	defb	-1
+
+
+
+;------------------------------------------------------------------------------
+;
+; Initialize VIO-X
+;	clear screen, setup clock
+;
+botlist:					; last link in linked list
+	token	'IVIO',0,0,ivio
+ivio::
+	ld	hl,@covec		; Get and save old console i/o vectors
+	ld	b,(hl)
+	ld	(hl),viox
+
+	ld	hl,@civec
+	ld	c,(hl)
+	ld	(hl),viox
+
+	push	bc
+
+	call	?prmsgn			; Set Vio-X clock
+	defb	1ah,esc,'>' or 80h
+
+	ld	c,5			;
+	ld	b,00000111b		; Clock read mask for Hour 10's
+	call	odat			; C=5
+
+	ld	b,00001111b		; Clock read mask for 
+	rept	5
+	call	odat			; C=4,3,2,1,0
+	endm
+;
+	call	?prmsgn		; Get VIO-X version
+	defb	1bh,7fh or 80h	; get-firmware-version
+;
+	pop	bc		; Restore console i/o vectors
+	ld	hl,@covec
+	ld	(hl),b
+
+	ld	hl,@civec
+	ld	(hl),c
+
+	in	a,(viox$data)	; Cheap raw input 
+				; (Can't ?conin because that is not RAW mode)
+
+	call	phex		; Display version
+
+	ret			; A = vio f/w rev
+
+odat::	call	gcn
+	and	b
+	add	a,'0'
+	call	?conout
+	dec	c
+	ret
+
+;------------------------------------------------------------------------------
+; Initialize/update test variables
+; Set pass/fail to null
+;
+initvars::
+	push	hl
+	ld	hl,0
+	ld	(passes),hl
+	ld	(failures),hl	; Initialize for ram/dma tests
+	pop	hl
+	ret
+;
+;
+;  Bump Fail counter
+;
+pfail::	push	hl
+	ld	hl,(failures)
+	inc	hl
+	ld	(failures),hl
+	pop	hl
+	ret
+
+;
+; Bump pass counter
+;
+ppass::	push	hl
+	ld	hl,(passes)
+	inc	hl
+	ld	(passes),hl
+	pop	hl
+	ret
+
+	end
+
+

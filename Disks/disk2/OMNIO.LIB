@@ -1,0 +1,97 @@
+	;
+	; omnidisk i/o equates
+	; 
+
+omnidata	equ	0a0h		; data port for omnidisk controller
+omnistat	equ	omnidata+1	; status port
+omni$in		equ	1		; data is ready
+omni$out	equ	80h		; Sending is possible/usefull
+
+
+oc$BOOT	equ	0		;BOOT SYSTEM				numrecs 00-ff
+oc$swrt	equ	1		; write system				numrecs 00-ff
+oc$mode equ	2		;dma/IO mode
+oc$DLDS equ	4		;define logical device set
+oc$unit	equ	9		;select (logical) unit
+oc$TRaK	equ	10		;select track
+oc$reCD	equ	11		;select (logical) reCORD
+oc$DaDR	equ	12		;set dma aDDreSS
+oc$read	equ	13		;read
+oc$WRIT	equ	14		;write
+oc$DFMD	equ	18		;define memory disk
+oc$GENS equ	22		;get general status
+oc$EXTS	equ	23		;get extended status
+oc$SFDP	equ	28		;set floppy disk parameters
+oc$hDPR	equ	31	; Set hard disk parms (#hDS, PCOMP, STP R, CTLR TYP)
+oc$hDTB	equ	32	; Set hard disk tables--DEV SEL, PhYS offset, OS TBL
+oc$fdie set	33	; Ignore floppy disk error & mark buffer valid
+oc$sihd	set	34	; Set individual HD parameters
+oc$gihd	set	35	; Get individual HD parameters and tables
+
+oc$FMTF	equ	3		;format floppy track
+oc$GLDS	equ	5		;get logical device set
+oc$FWRT	equ	6       	;force write of modified buffers
+oc$skew	equ	8		;set non-standard skew factor
+oc$MOVM	equ	16		;move block of memory with dma
+oc$SRTY	equ	24		;set counters for (floppy disk) retry logic
+oc$DPBX	equ	25		;get extended DPB (CP/M 3.0)
+oc$GBPB	equ	26		;get MS-DOS "bios parameter block"
+oc$GMCS	equ	27		;get MS-DOS "media change status"
+
+
+
+
+
+	;
+	; ONELIST
+	;      send one byte to omnidisk
+        ;      continue execution after byte
+	;
+
+?onelist:
+	xthl
+	mov a,m
+	inx h
+	xthl
+
+	;
+	; SENDCMD
+	;      send one byte to omnidisk
+        ;      passed in <a> register
+	;
+
+?sendcmd:
+	push psw			; Save byte to send later
+sendcmd1:
+	in omnistat
+        ral ! jc sendcmd1		; Wait for ready
+	pop psw
+        out omnidata			; Output it
+	ret
+
+	; INCHAR
+	;   accept one data from OMNIDISK
+	;
+
+?inchar	in omnistat
+        rar ! jnc ?inchar		; Wait until ready
+	in omnidata
+        ret	              ; Grab data
+
+
+	; CMDLIST
+	; Issue a list of commands
+	; continue execution
+
+?cmdlist:
+	xthl
+	mov c,m			; How many commands ?
+	inx h
+cmdlist1
+	mov a,m				; Get a byte to send.
+	inx h
+	call ?sendcmd			; Send it to controller.
+	dcr c ! jnz cmdlist1		; More commands to send ?
+	xthl				; Set return address just past list
+        ret
+

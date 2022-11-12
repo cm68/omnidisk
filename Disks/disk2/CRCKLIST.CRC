@@ -1,0 +1,23 @@
+
+--> FILE:  MOVZ8   .COM		CRC = 65 D9
+--> FILE:  NEWZ352 .MAC		CRC = 6C C6
+--> FILE:  BOOT    .ASM		CRC = 2A 84
+--> FILE:  BOOT    .COM		CRC = 4C C2
+--> FILE:  DDT     .COM		CRC = 34 B9
+--> FILE:  SW      .COM		CRC = 60 32
+--> FILE:  LU      .ASM		CRC = F0 DE
+--> FILE:  CPM64   .COM		CRC = 78 06
+--> FILE:  OMNIO   .LIB		CRC = EF 77
+--> FILE:  SHOWDPB .ASM		CRC = F9 22
+--> FILE:  FMT3    .COM		CRC = 87 6E
+--> FILE:  LOAD    .COM		CRC = 2A 62
+--> FILE:  SSKEW   .ASM		CRC = E0 1B
+--> FILE:  PIP     .COM		CRC = B7 5C
+--> FILE:  STAT    .COM		CRC = 4C ED
+--> FILE:  SUBMIT  .COM		CRC = B0 78
+--> FILE:  SYSGEN5 .COM		CRC = 62 00
+--> FILE:  TMOV    .ASM		CRC = CE F2
+--> FILE:  TMOV    .COM		CRC = 09 13
+--> FILE:  XSUB    .COM		CRC = E8 6D
+--> FILE:  BPROM   .ASM		CRC = 77 0C
+--> FILE:  CRC     .COM		CRC = B2 07
