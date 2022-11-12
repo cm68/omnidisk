@@ -1,0 +1,229 @@
+
+
+                	; SHOWDPB.ASM
+                	;
+                	;
+                	; Report DPB of specified drive
+                	;
+                
+ 000A =         	cr equ 10
+ 000D =         	lf equ 13
+ 005C =         	fcb equ 5ch
+ 0024 =         	EOT equ '$'
+                
+ 0100           	org	100h
+                
+                show$dpb
+ 0100 3A5C00    	lda fcb
+ 0103 3D        	dcr a
+ 0104 F20C01    	jp current$drive	; Process command tail
+ 0107 0E19      	mvi c,19h		; Get current drive in A
+ 0109 CD0500    	call 5
+                
+                current$drive
+ 010C 5F        	mov e,a
+ 010D C641      	adi 'A'
+ 010F 323702    	sta m$drive		; Make ascii and store in 
+                				; message
+ 0112 D5        	push	d
+ 0113 0E0E      	mvi	c,0eh		; Select Disk E
+ 0115 CD0500    	call	5
+ 0118 D1        	pop	d
+                
+ 0119 D5        	push	d
+ 011A 0E1F      	mvi	c,1fh		; Get DPB pointer in HL
+ 011C CD0500    	call	5
+ 011F D1        	pop	d
+                
+ 0120 E5        	push H			; Save DPB pointer
+                
+ 0121 114302CD90	lxi d,m$spt	!	call Store2
+ 0127 116302CD9B	lxi d,m$bsh	!	call Store1
+ 012D 117B02CD9B	lxi d,m$blm	!	call Store1
+ 0133 119202CD9B	lxi d,m$exm	!	call Store1
+ 0139 11AA02CD90	Lxi d,m$dsm	!	call Store2
+ 013F 11D002CD90	Lxi d,m$drm	!	call Store2
+ 0145 11F202CD9B	Lxi d,m$alv0	!	call Store1
+ 014B 111B03CD9B	Lxi d,m$alv1	!	call Store1
+ 0151 114403CD90	Lxi d,m$cks	!	call Store2
+ 0157 115D03CD90	Lxi d,m$ofs	!	call Store2
+                
+ 015D E5        	push	h
+                
+ 015E 0E0C      	mvi	c,12		; Get CPM version in HL and A
+ 0160 CD0500    	call	5
+ 0163 FE30      	cpi	30h
+                
+ 0165 E1        	pop	h
+ 0166 DA7F01    	jc	ver2		; Old CPM
+                
+ 0169 118C03CD9B	lxi	d,m$psh ! call store1
+ 016F 11B403CD9B	lxi	d,m$psm	! call store1
+                
+ 0175 3E0D      	mvi	a,lf
+ 0177 328503    	sta	mod3		; Fix printable stuff
+ 017A 3E11      	mvi	a,17
+ 017C 328901    	sta	mod31+1
+                
+                ver2:
+ 017F 110602    	lxi d,DPBDUMP
+ 0182 0E09      	mvi	c,9
+ 0184 CD0500    	call	5	; Print message
+ 0187 E1        	pop h
+                mod31:
+ 0188 060F      	mvi b,15
+ 018A CDA601    	call Hex$list1	; Print 15 bytes of DPB
+ 018D C3F701    	jmp CRLF
+                
+ 0190 E5        Store2:	push h
+ 0191 23        	inx h
+ 0192 CD9B01    	call Store1
+ 0195 E3        	xthl
+ 0196 CD9B01    	call Store1
+ 0199 E1        	pop h
+ 019A C9        	ret
+                
+                
+ 019B 7E        Store1:	mov a,m
+ 019C 23        	inx h
+ 019D CDE101    	call phex$C
+ 01A0 12        	stax d		; store lower nibble at DE
+ 01A1 13        	inx d
+ 01A2 79        	mov a,c
+ 01A3 12        	stax d
+ 01A4 13        	inx d		; store high nibble at DE+1
+ 01A5 C9        	ret
+                
+                Hex$list1:
+ 01A6 CDBE01    	call phex$HL
+ 01A9 3E3A      	mvi a,':'
+ 01AB CDEA01    	call prn$A
+ 01AE CD0102    	call p$space
+                
+                	;
+                	; Print B bytes at HL in ascii based HEX
+                	;
+                
+                Hex$list2:
+ 01B1 7E        	mov a,m
+ 01B2 CDC301    	call phex$a
+ 01B5 CD0102    	call p$space
+ 01B8 23        	inx h
+ 01B9 05        	dcr b
+ 01BA C2B101    	jnz Hex$list2
+ 01BD C9        	ret
+                
+                
+                phex$HL:
+ 01BE 7C        	mov a,h
+ 01BF CDC301    	call phex$a
+ 01C2 7D        	mov a,l
+                
+                
+                	; prn$a$hex
+                	;
+                
+                phex$A
+ 01C3 F5        	push a
+ 01C4 CDD101    	call get$up$nib
+ 01C7 CDEA01    	call prn$A
+ 01CA F1        	pop a
+ 01CB CDD501    	call get$lw$nib
+ 01CE C3EA01    	jmp prn$A
+                
+                
+                	; get$upper$nibble
+                	;
+                
+                get$up$nib
+ 01D1 1F1F1F1F  	rar ! rar ! rar ! rar 
+                
+                	; get$lower$nibble
+                	;
+                
+                get$lw$nib:
+ 01D5 E60F      	ani 0000$1111b
+ 01D7 FE0A      	cpi 10
+ 01D9 DADE01    	jc less
+ 01DC C607      	adi 7
+                less:	
+ 01DE C630      	adi '0'
+ 01E0 C9        	ret
+                
+                
+                	; Convert A to ascii based HEX, lower 4 bits in C, upper in A
+                	;
+                
+                phex$C:	
+ 01E1 F5        	push a
+ 01E2 CDD501    	call get$lw$nib
+ 01E5 4F        	mov c,a
+ 01E6 F1        	pop a
+ 01E7 C3D101    	jmp get$up$nib
+                
+                
+                	; prn$a
+                	; print ascii to console from <A>
+                
+ 01EA C5D5E5    prn$A:	push b ! push d ! push h
+ 01ED 5F        	mov e,a
+ 01EE 0E02      	mvi c,2
+ 01F0 CD0500    	call 5
+ 01F3 E1D1C1    	pop h ! pop d !	pop b
+ 01F6 C9        	ret
+                
+                	; Print CR,LF to console
+                
+ 01F7 3E0D      CRLF:	mvi a,lf
+ 01F9 CDEA01    	call prn$A
+ 01FC 3E0A      	mvi a,cr
+ 01FE C3EA01    	jmp prn$A
+                
+                
+                	; Print a space
+                	;
+                
+ 0201 3E20      p$space	mvi	a,' '
+ 0203 C3EA01    	jmp	prn$a
+                
+                
+ 0206 53484F5720DPBDUMP:DB	'SHOW DPB (Disk Parameter Block)',cr,lf,cr,lf
+ 0229 4450422066	db	'DPB for drive '
+ 0237 413A0A0D0Am$drive:db	'A:',cr,lf,cr,lf
+ 023D 5350543A20	db	'SPT:  '
+ 0243 0000000048m$spt:	db	0,0,0,0,'H',9,'Sectors per track.',cr,lf
+ 025D 4253483A20	db	'BSH:  '
+ 0263 0000480942m$bsh:	db	0,0,'H',9,'Block shift.',cr,lf
+ 0275 424C4D3A20	db	'BLM:  '
+ 027B 0000480942m$blm:	db	0,0,'H',9,'Block mask.',cr,lf
+ 028C 45584D3A20	db	'EXM:  '
+ 0292 0000480945m$exm:	db	0,0,'H',9,'Extent mask.',cr,lf
+ 02A4 44534D3A20	db	'DSM:  '
+ 02AA 0000000048m$dsm:	db	0,0,0,0,'H',9,'Maximum # of blocks - 1.',cr,lf
+ 02CA 44524D3A20	db	'DRM:  '
+ 02D0 0000000048m$drm:	db	0,0,0,0,'H',9,'Directory entries-1.',cr,lf
+ 02EC 414C56303A	db	'ALV0: '
+ 02F2 0000480944m$alv0:	DB	0,0,'H',9,'Directory group allocation 0.',cr,lf
+ 0315 414C56313A	db	'ALV1: '
+ 031B 0000480944m$alv1:	DB	0,0,'H',9,'Directory group allocation 1.',cr,lf
+ 033E 434B533A20	db	'CKS:  '
+ 0344 0000000048m$cks:	DB	0,0,0,0,'H',9,'Check size.',cr,lf
+ 0357 4F46463A20	db	'OFF:  '
+ 035D 0000000048m$ofs:	DB	0,0,0,0,'H',9,'Offset (number reserved tracks).',cr,lf
+                
+ 0385 24        mod3:	db	EOT
+                
+ 0386 5053483A20	db	'PSH:  '
+ 038C 0000480950m$psh:	db	0,0,'H',9,'Physical record shift factor',cr,lf
+ 03AE 50534D3A20	db	'PSM:  '
+ 03B4 0000480950m$psm:	db	0,0,'H',9,'Physical record mask',cr,lf
+                
+ 03CE 24        	db	EOT
+                
+ 03CF 0A0D224450hexdmp:	DB	cr,lf,'"DPB address and Hex dump of table."',cr,lf
+ 03F7 24        	db	EOT
+                
+                dumpbuf:
+                
+ 03F8           	END
+
