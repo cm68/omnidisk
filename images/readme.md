@@ -1,4 +1,4 @@
-Mods for revision 1.3 firmware to allow SOD to reset NEC, and SIB to get NEC DRQ status
+Mods for revision 1.3 firmware to allow SOD to reset NEC, and SID to get NEC DRQ status
 
 1. On front of board cut first diagonal trace between 8085 and NEC-765.  See picture CUT_TOP
    where I have high-lighted where cut is.
