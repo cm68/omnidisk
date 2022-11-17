@@ -1,4 +1,4 @@
-	;TITLE	"4K STAND ALONE MONITOR/DEBUG PACKAGE"
+	;TITLE	"4K STAND ALONE MONITOR/DEBUG PACKAGE BASED ON REV 2 Jan 6 86"
 	;PAGE 0
 ;
 ;	SYSTEM VARIABLE DEFINITIONS
@@ -9,7 +9,6 @@ TRUE	EQU	NOT FALSE
 
 ISIO2	EQU	FALSE	;IMSAI SIO-2
 CSS1	EQU	TRUE	;COMPUPRO SYSTEM SUPPORT 1
-ROMMON		EQU	TRUE
 TESTING		EQU	TRUE
 AUTOBOOT	EQU	FALSE
 COMPUPRO85	EQU	FALSE
@@ -106,12 +105,7 @@ RAMPTR	EQU	09000H	;ADDR OF RAM
 ROMPTR	EQU	0F800H	;FIRMWARE LOCATION
 RAMPTR	EQU	0F000H	;ADDR OF RAM
 	ENDIF
-	IF NOT ROM$MON
-ROMTOP	EQU	0800H	;ROM SIZE 2K
-	ENDIF
-	IF ROM$MON
 ROMTOP	EQU	1000H	;ROM SIZE 4K
-	ENDIF1
 
 
 ; I/O PORTS
@@ -163,8 +157,8 @@ PROMPT	EQU	'$'	;SCREEN PROMPT
 
 ;
 ;********************************************************
-;	VALID COMMAND BYTE ONE FOR OMNI CONTROLLER	*
-;	   (THESE EQUATES ARE COPIED FROM BIOS)		*
+;	VALID COMMAND BYTE ONE FOR OMNI CONTROLLER V1.3		*
+;	   (THESE EQUATES ARE COPIED FROM BIOS)				*
 ;********************************************************
 
 OC$BOOT	EQU	0		;BOOT SYSTEM
@@ -173,9 +167,9 @@ OC$MODE EQU	2		;DMA/IO MODE
 OC$FMTF	EQU	3		;FORMAT FLOPPY TRACK
 OC$DLDS EQU	4		;DEFINE LOGICAL DEVICE SET
 OC$GLDS	EQU	5		;GET LOGICAL DEVICE SET
-;C$FWRT	EQU	6       ;FORCE WRITE OF MODIFIED BUFFERS
+OC$FWRT	EQU	6       ;FORCE WRITE OF MODIFIED BUFFERS
 OC$RBPH	EQU	7		;RESET BOOT PHANTOM
-;C$SKEW	EQU	8		;Set sector skew
+OC$SKEW	EQU	8		;Set sector skew
 OC$UNIT	EQU	9		;SELECT (LOGICAL) UNIT
 OC$TRAK	EQU	10		;SELECT TRACK
 OC$RECD	EQU	11		;SELECT (LOGICAL) RECORD
@@ -183,26 +177,34 @@ OC$DADR	EQU	12		;SET DMA ADDRESS
 OC$READ	EQU	13		;READ
 OC$WRIT	EQU	14		;WRITE
 OC$HEAD	EQU	15		;SET HEAD (NOT USED, ANYWHERE)
-;C$MOVM	EQU	16		;DMA memory move
+OC$MOVM	EQU	16		;DMA memory move
 OC$GDPB	EQU	17		;GET DPB (GET CP/M DPB FROM OMNI)
-;C$DFMD	EQU	18		;Define memory disk
+OC$DFMD	EQU	18		;Define memory disk
 OC$SSEK EQU	19		;NON-IMPYED SEEK (NOT USED IN BIOS)
-;C$TIOR	EQU	20		;DEBUG READS FROM OMNI
-;C$TIOW	EQU	21		;DEBUG WRITES TO OMNI
+OC$TIOW	EQU	20		;DEBUG WRITES TO OMNI
+OC$TIOR	EQU	21		;DEBUG READE FROM OMNI
 OC$GENS EQU	22		;GET GENERAL STATUS
 OC$EXTS	EQU	23		;GET EXTENDED STATUS
-;C$SRTY	EQU	24		;Set floppy disk retry counters
-;C$DPBX	EQU	25		;Get extended DPB
-;C$GBPB	EQU	26		;Get MS-DOS bios parameter block
-;C$GMCS	EQU	27		;Get media change status
+OC$SRTY	EQU	24		;Set floppy disk retry counters
+OC$DPBX	EQU	25		;Get extended DPB
+OC$GBPB	EQU	26		;Get MS-DOS bios parameter block
+OC$GMCS	EQU	27		;Get media change status
 OC$SFDP	EQU	28		;Set Floppy Disk Parameters
 OC$PREA	EQU	29		;Physical Sector Read
 OC$PWRT	EQU	30		;Physical Sector Write
-;C$HDPA	EQU	31		;Set Common Hard Disk Parameters
-;C$HTBL	EQU	32		;Set Hard Disk Tables
+OC$HDPA	EQU	31		;Set Common Hard Disk Parameters
+OC$HTBL	EQU	32		;Set Hard Disk Tables
 OC$FDIE	EQU	33		;Ignore Floppy Disk Errors & Mark Buffer Valid
-;C$SIHD	EQU	34		;Set Individual HD Parameters
-;C$GIHD	EQU	35		;Get Individual HD Parameters
+OC$SIHD	EQU	34		;Set Individual HD Parameters
+OC$GIHD	EQU	35		;Get Individual HD Parameters
+OC$SFPB	EQU	36		;SET FLOPPY DPB AND PARAMETERS
+OC$GFPB	EQU	37		;GET FLOPPY DPB AND PARAMETERS
+OC$DRID	EQU	38		;READ I.D. INFO TO EXTENDED STATUS
+OC$SIND	EQU	39		;SET INDIVIDUAL STEP RATES
+OC$STPI	EQU	40		;SET TRACK DENSITY STATUS (TPI)
+OC$GTPI	EQU	41		;INVERSE OF ABOVE
+OC$GVER	EQU	42		;RETURN VERSION NUMBER
+OC$GTAG	EQU	43		;RETURN BUFFER TAGS TO HOST
 OC$INIT	EQU	255		;Re-Initialize Omnidisk Controller
 
 OMNIDATA EQU	0A0H		;<== DATA PORT FOR OMNI CONTROLLER
@@ -271,9 +273,6 @@ LINE:			;ASCII PRINT BUFFER, 17 BYTES
 DPHADRS DS	2	;ADDRESS OF DPH
 STATUS	DS	10	;BUFFER
 		DS	6	;
-CWFLAG:	DS	1		;COLD/WARM BOOT FLAG
-AUTOFLG:
-		DS	1		;AUTOBOOT COMMAND FLAG
 EOL		EQU	$
 ;*******************************************************
 ; END OF INIT SCRATCH RAM
@@ -308,767 +307,20 @@ DIRBUF	DS	128		;DIRECTORY BUFFER
 STACK	EQU	$		;Stack grows down
 VARSIZE	EQU	$		;END OF VARS
 
-	IF ROM$MON
-IOBYTE		DS	1		;INTEL I/O BYTE
-	ENDIF ;ROM$MON
-	IF NOT ROM$MON
-IOBYTE	EQU	0003H		;INTEL I/O BYTE
-CDISK	EQU	0004H		;CURRENT CPM DISK BUFFER (CONTENTS 0=A,..,15=P)
-	ENDIF ;NOT ROM$MON
-
 ;************************************************
 ;ENTRY HERE IS ON POWER UP OR SYSTEM RESET
 ;************************************************
 
 	ORG ROMPTR
-CBOOTE:
-	JMP	CBOOT		;COLD START
-WBOOTE:
-	JMP	WBOOT		;WARM START
-	JMP	IOCONST		;CONSOLE STATUS
-	JMP	IOCONIN		;CONSOLE CHAR IN
-	JMP	IOCONOUT	;CONSOLE CHAR OUT
-	JMP	IOLIST		;LIST CHAR OUT
-	JMP	IOPUNCH		;PUNCH CHAR OUT
-	JMP	IOREADER	;READER CHAR OUT
-	JMP	HOME		;MOVE HEAD TO HOME POSITION
-	JMP	SELDSK		;SELECT DISK
-	JMP	SETTRK		;SET TRK #
-	JMP	SETSEC		;SET SECT #
-	JMP	SETDMA		;SET DMA ADDR
-	JMP	READ		;READ DISK
-	JMP	WRITE		;WRITE DISK
-	JMP	IOLISTST	;RETURN LIST STATUS
-	MOV H,B 		;SECTRAN. REPLACE 3-BYTE JMP WITH 3-BYTE ROUTINE
- 	MOV L,C 
-	RET
-
-	IF NOT ROM$MON
-;	CONSOLE STATUS - CON:
-IOCONST:
-	CALL	DISPATCH
-	DB	1		;USE IOBYTE BITS 1-0
-	DB	CRTSTAT-$	;00 - TTY: (CRT STATUS)
-	DB	CRTSTAT-$	;01 - CRT:	"
-	DB	CRTSTAT-$	;10 - BAT:	"
-	DB	CRTSTAT-$	;11 - UC1:	"
-
-;	CONSOLE IN - CON:
-IOCONIN:
-	CALL	DISPATCH
-	DB	1		;USE IOBYTE BITS 1-0
-	DB	CRTIN-$		;00 - TTY: (CRT INPUT)
-	DB	CRTIN-$		;01 - CRT:	"
-	DB	CRTIN-$		;10 - BAT:	"
-	DB	CRTIN-$		;11 - UC1:	"
-
-;	CONSOLE OUT - CON:
-IOCONOUT:
-	CALL	DISPATCH
-	DB	1		;USE IOBYTE BITS 1-0
-	DB	CRTOUT-$	;00 - TTY: (CRT OUTPUT)
-	DB	CRTOUT-$	;01 - CRT:	"
-	DB	CRTOUT-$	;10 - BAT:	"
-	DB	CRTOUT-$	;11 - UC1:	"
-
-;	LIST OUT - LST:
-IOLIST:
-	CALL DISPATCH
-	DB	3		;USE IOBYTE BITS 7-6
-	DB	CRTOUT-$	;00 - TTY: (CRT OUTPUT)
-	DB	CRTOUT-$	;01 - CRT:	"
-	DB	LPTOUT-$	;10 - LPT: (LINE PRINTER OUTPUT)
-	DB	CRTOUT-$	;11 - UL1: (CRTSOLE OUTPUT)
-
-;	LIST STATUS -LST:
-IOLISTST:
-	CALL DISPATCH
-	DB	3		;USE IOBYTE BITS 7-6
-	DB	CRTSTAT-$	;00 - TTY: (CRT OUTPUT)
-	DB	CRTSTAT-$	;01 - CRT:	"
-	DB	LPTSTAT-$	;10 - LPT: (LINE PRINTER OUTPUT)
-	DB	CRTSTAT-$	;11 - UL1: (CRTSOLE OUTPUT)
-
-;	PUNCH OUT - PUN:
-IOPUNCH:
-	CALL	DISPATCH
-	DB	5		;USE IOBYTE BITS 5-4
-	DB 	CRTOUT-$	;00 - TTY: (CRTSOLE OUTPUT)
-	DB	PUNOUT-$	;01 - PTP: (HIGH SPEED PUNCH OUTPUT)
-	DB	CRTOUT-$	;10 - UP1: (CRTSOLE OUTPUT)
-	DB	CRTOUT-$	;11 - UP2:	"
-
-;	READER IN - RDR:
-IOREADER:
-	CALL	DISPATCH
-	DB	7		;USE IOBYTE BITS 3-2
-	DB	CRTIN-$		;00 - TTY: (CRT INPUT)
-	DB	RDRIN-$		;01 - PTR: (HIGH SPEED READER INPUT)
-	DB	CRTIN-$		;10 - UR1: (CRT INPUT)
-	DB	CRTIN-$		;11 - UR2:	"
-
-;********************************************************
-;	LIST CHARACTER IN C				*
-;********************************************************
-
-LPTOUT:
-	IF LST
-	CALL	LPTSTAT		;GET PRINTER STATUS
-	JZ		LPTOUT		;LOOP IF NOT READY
-
-	IF ISIO2
-	MOV		A,C			;NO
-	OUT		SERDATB		;SEND IT
-	ENDIF ;ISIO2
-	ENDIF ;LST
-	IF NOT ROM$MON
-	RET					;BYE
-
-;********************************************************
-;	RETURN LIST STATUS (FF IF READY, ELSE 0)	*
-;********************************************************
-
-LPTSTAT:
-	IF LST
-	IF ISIO2
-	IN		SERCTLB		;GET SIO PORT B STATUS
-	ANI		SERTX		;IS IT BUSY
-	ENDIF ;ISIO2
-	ENDIF ;LST
-	IF NOT ROM$MON
-
-	IF NOT LST
- 	XRA		A			;...THEN ALLWAYS READY
-	ENDIF ;NOT LST
-	IF NOT ROM$MON
-
-	DCR		A			;<A> AS ADVERTISED
-	RET					;BYE
-
-;********************************************************
-;	CRT STATUS RETURNED IN A.			*
-;							*
-;	<A>=00	KEYBOARD CHARACTER NOT READY		*
-;	<A>=FF  KEYBOARD CHARACTER READY		*
-;********************************************************
-CRTSTAT:
-	IN		SERCTLA		;STATUS PORT
-	ANI		SERRX		;TEST RxRDY
-	RZ					;IF NOT READY
-	MVI		A,0FFH		;ELSE...RETURN <FF>
-	RET					;BYE
-
-;********************************************************
-;	CRTIN RETURNS KEYBOARD CHARACTER IN <A>		*
-;********************************************************
-CRTIN:
-    CALL	CRTSTAT
-	JZ		CRTIN		;GET RxRDY
-    IN		SERDATA		;GET CHAR
-	ANI	7FH				;STRIP PARITY
-	RET					;BYE
-
-;********************************************************
-;	CRT SENDS THE CHARACTER IN <C> TO OUTPUT
-;********************************************************
-
-CRTOUT:
-    IN  	SERCTLA		;GET STATUS
-	ANI		SERRX		;TxRDY?
-	JZ		CRTOUT		;REPEAT, NOT READY
-	MOV		A,C			;CHAR TO ACCUM
-    OUT 	SERDATA		;CHAR TO PORT
-	RET
-
-;********************************************************
-;	PUNCH CHARACTER IN REGISTER <C>			*
-;********************************************************
-
-PUNOUT:
-	IF RDRPUN
-	IN		RPST
-	ANI		RPTXR
-	JZ		PUNOUT		;IF RECIEVER NOT READY FOR NEXT BYTE
-	MOV		A,C
-	OUT		RPDATA		;DATA TO "PUNCH"
-	ENDIF ;RDRPUN
-	IF NOT ROM$MON
-
-;	NOTE: IF RDRPUN=FALSE WE USE RET FROM RDRIN
-
-;********************************************************
-;	READ CHARACTER INTO <A> FROM READER DEVICE	*
-;********************************************************
-
-RDRIN:
-	IF RDRPUN
-	IN		RPST
-	ANI		RPRXR
-	JZ		RDRIN		;IF NO DATA FROM "READER" AS YET
-	IN		RPDATA		;ACCEPT BYTE FROM READER
-	ENDIF ;RDRPUN
-	IF NOT ROM$MON
-	IF NOT RDRPUN
-	MVI		A,1AH		;NO READER? RETURN ^Z AS EOF INDICATION
-	ENDIF ;NOT RDRPUN
-	IF NOT ROM$MON
-	RET					;BYE
-
-;********************************************************
-;	DISPATCH TO ACCESS CONSOLE, PRINTER PUNCH, ETC	*
-;							*
-;	(FOR MAX RANGE ON ONE-BYTE ADDRESSES IT IS	*
-;	 BEST TO LEAVE THIS ROUTINE AFTER THE END	*
-;	 OF THE LAST CRT, PRINTER, PUNCH OR WHATEVER	*
-;	 ACCESS SUBROUTINE.)				*
-;********************************************************
-
-DISPATCH:
-	XTHL			;SAVE CALLER'S <HL>, GET TABLE ADDR
-	MOV		D,M		;SHIFT COUNT
-	INX		H		;POINT TABLE
-	LDA 	IOBYTE	;GET IO ASSIGNMENTS BYTE
-DSHFT:
-	RLC
-	DCR		D
-	JNZ		DSHFT	;SHIFT TO POSITION BITS
-	RRC
-	ANI		03H		;MASK BITS
-	MOV		E,A		;D ALREADY CLEAR
-	DAD		D		;INDEX INTO TABLE
-	MOV		E,M		;FETCH PROPER ADDRESS BYTE
-	DAD		D		;ADD BACK THE "-$" OR DISPATCH ADDRESS TO <HL>
-	XTHL			;PUT DISPATCH ADDRESS, RESTORE CALLER'S <HL>
-	RET				;GO TO ROUTINE
-
-;----------------------------------------
-; COLD BOOT
-;----------------------------------------
-cboot:
-	LXI		H,0081H			;00 (A:) FOR CDISK, 81 FOR IOBYTE
-	SHLD	IOBYTE			;IOBYTE IS LOC 3, CDISK IS LOC 4
-	XRA		A				;A=0
-	STA		CWFLAG			;CLEAR COLD BOOT FLAG
-; COPY DPHBLOCK
-	LXI		D,DPHBASE		;RAM
-	LXI		H,ROM$DPHBASE	;ROM TABLE
-	MVI		B,2*16			;SIZE OF TABLE
-r$copy:
-	MOV		A,M
-	STAX	D
-	INX		H
-	INX		D
-	DCR		B
-	JNZ		r$copy
-; CONFIGURE OMNIDOSK
-	CALL	CMDLIST
-	DB	CBLEND-$-1			;LENGTH OF LIST
-	DB	OC$MODE				;OMNI COMMAND: SET DMA OR NON-DMA MODE
-	IF NOT DMA
-	DB	DMAPRI				;NOTE TO USERS WHERE DMA KILLS YOUR SYSTEM:
-							;BIOS DOES NOT CAUSE ANY DMA
-	ENDIF ;NOT DMA			;UNLESS MEMORY DISK IS USED.
-	IF NOT ROM$MON
-	IF DMA
-	DB	DMAPRI+80H			;BIOS USES DMA FOR READ/WRITE
-	ENDIF ;DMA
-	IF NOT ROM$MON
-;	DEFINE FLOPPY DISK PHYSICAL PARAMETERS
-	DB	OC$SFDP				;OMNI COMMAND: SET FLOPPY DISK PARAMETERS
-	DB		6			;Delay before write * 250ms
-	DB		20			;Head unload time * 250ms
-	DB		6			;8" FLOPPY STEP RATE IN ms
-	DB		6			;5" FLOPPY STEP RATE IN ms
-	DB		35			;8" FLOPPY HEAD LOAD TIME IN ms
-	DB		0			;5" FLOPPY HEAD LOAD TIME IN ms
-	DB		14			;8" FLOPPY HEAD SETTLE TIME (AFTER FD SEEK)
-	DB		14			;5" FLOPPY HEAD SETTLE TIME (AFTER FD SEEK)
-	;DRIVES 0-1 ( A: & B: )
-	DB	OC$DLDS,00H,FDISK5+0	;DEFINE A:
-	DB	OC$DLDS,01H,FDISK5+1	;DEFINE B:
-CBLEND	EQU	$				;END OF LIST
-
-;----------------------------------------
-;Initialize the IMSAI sio-2 card
-;----------------------------------------
-	IF ISIO2
-	xra	a			; Zero
-	out	IECTL		; Disable SIO-2 interrupts
-	out	SERCTLA		; Port A
-	out	SERCTLA
-	out	SERCTLA
-	out	SERCTLB		; Port B
-	out	SERCTLB
-	out	SERCTLB
-	mvi	a,40H		; Reset 8251
-	out	SERCTLA		; Port A
-	out	SERCTLB		; Port B
-	mvi	a,4EH		; 8N1 /16
- 	out	SERCTLA		; Port A
-	out	SERCTLB		; Port B
-	mvi	a,37H		; Clear ERRS, Enable Rx/Tx
- 	out	SERCTLA		; Port B
-	out	SERCTLB		; Port B
-	in	SERDATA		; Clear junk
-	in	SERDATB		; Clear junk
-	ENDIF	;ISIO2
-	IF NOT ROM$MON
-;----------------------------------------
-;Initialize the Compupro System Support-1
-;----------------------------------------
-	IF CSS1
-	in	CCTRL		;reset mode byte flipflop
-;Set Console Stop bits, Parity, Baud rate factor
-	mvi	a,CPBAUD shr 8
-	out	CMODE		;
-;Set Console baud rate
-	mvi	a,CPBAUD and 0FFh
-	out	CMODE		;
-;Control reg initialization
-	mvi	a,CTL2651	;Enable Tx, Rx, RTS=low, DTR=low
-	out	CCTRL
-	in	SERDATA		;Clear junk
-	ENDIF ;CSS1
-	IF NOT ROM$MON
-	ret				;RETURN TO CALLER
-
-
-;********************************************************
-;	DISK PARAMETER HEADER TABLES			*
-;********************************************************
-;
-;	PLEASE NOTE SEVERAL THING ABOUT THIS TABLE:
-;
-;	    THE "DW DEV$x" IN PLACE OF THE SKEW TABLE ADDRESS
-;	    IS CLEARLY NOT SKEW TABLE ADDRESS.  IT IS USED BY
-;	    BY THE LU-CHANGING UTILITY AND PERHAPS SOMEDAY BY
-;	    COLD START WITHIN THE BIOS.
-ROM$DPHBASE:
-	DW	DEV$A,0,0,0,DIRBUF
-	DW	TDPB$A,TCKV$A,TALV$A
-	DW	DEV$B,0,0,0,DIRBUF
-	DW	TDPB$B,TCKV$B,TALV$B
-
-;----------------------------------------
-; WARM BOOT
-;----------------------------------------
-
-wboot0:
-	sta		CDISK		;(FROM BIOS ERROR RECOVERY) SET FOR "A:" DISK
-wboot:
-	lxi		sp,TPA		;USE SPACE BELOW TPA FOR STACK
-	call	cmdlist
-	DB	5				;LENGTH OF LIST
-	DB	OC$UNIT,0		;SELECT A: DISK
-	DB	OC$BOOT
-	DB	(BDOS-BSORG+127)/128;NUMBER OF (LOGICAL) SECTORS TO LOAD
-	DB	OC$GENS				;GENERAL STATUS REQUEST FOR READ END
-	call	inchar		;THIS IS EITHER 1ST OF BOOTSTRAP OR GENSTAT
-	in		OMNISTAT
-	ora		a			;WHAT DID INCHAR JUST DELIVER?
-	jp		wboot		;IF WE GOT GENSTAT THEN ERROR.  GO RETRY.
-	mvi		c,LENBSTRAP-1
-wboot1:
-	call	inchar		;READ AND TRASH BOOTSTRAP PART OF 1ST SECTOR
-	dcr		c
-	jnz		wboot1		;IF MORE BOOTSTRAP TO TRASH
-	lxi		h,CCP		;Loading CCP + BDOS now
-	call	getdat
-	ora		a			;GENERAL STATUS
-	jnz		wboot		;IF ERROR RELOADING CCP WE GO TRY AGAIN
-	mvi		a,1
-	sta		CWFLAG		;Set warm boot flag
-						;FALL INTO GOCPM
-
-;********************************************************
-;	SET PARAMETERS AND GO TO CP/M			* 		
-;********************************************************
-
-gocpm:
-	mvi		a,(JMP)
-	sta		0			;JMP TO WBOOT
-	lxi		h,WBOOTE	;WBOOT ENTRY POINT
-	shld	1			;JUMP ADDR AT 0
-
-	sta		5			;JMP TO BDOS
-	lxi		h,BDOS		;BDOS ENTRY POINT
-	shld	6			;JUMP ADDR AT 5
-
-	lxi		b,80H		;** SETUP DEFAULT
-	call	setdma		;** DMA ADDRESS
-
-;	CLEAN UP AND GO TO CCP
-
-	lda		CDISK		;CURRENT DISK #
-	mov		c,a			;SEND TO CCP
-	ei					;ENABLE INTERRUPTS
-
-	lda		CWFLAG		;IS COLD OR WARM BOOT?
-	ora		a			;SET FLAGS. NOTE:DO NOT DO ANYTHING TO CHANGE
-						; FLAGS FROM HERE TO COLDBT:
-	lda		AUTOFLG		;DO WE HAVE AN AUTOBOOT?
-	jz		coldbt		;If Cold Boot
-	rar					;Else warm boot tests
-coldbt:
-	rar
-	jc		CCP			;DO AUTOBOOT
-	jmp		CCP+3		;JUST GO TO CCP
-
-
-;********************************************************
-; 	ROUTINES START HERE				*
-;********************************************************
-;	DISK I/O DRIVERS. STORE	THE PARAMETERS		*
-;	AWAY FOR THE READ AND WRITE SUBROUTINES		*
-;********************************************************
-
-;********************************************************
-;	SELECT DISK GIVEN BY <C>			*
-;********************************************************
-
-seldsk:
-	lxi		h,0		;USED FOR <H>=0 AND IF SELECT ERROR
-	mov		a,c
-	cpi		ndisks	;MUST BE BETWEEN 0 AND NDISKS-1
-	rnc				;IF INVALID DISK NUMBER
-
-;	COMPUTE PROPER DISK PARAMETER HEADER ADDR
-
-	call	onelist
-	db		oc$unit	;OMNI COMMAND: SELECT LOGICAL UNIT
-	mov		a,c
-	call	sendcmd	;...to OMNI
-	mov		l,c		;<HL> = UNIT NUMBER (A:=0, B:=1,,, P:=0FH)
-	dad		h		;*2
-	dad		h		;*4
-	dad		h		;*8
-	dad		h		;*16 (SIZE OF EACH HEADER)
-	lxi		b,DPHBASE
-	dad		b		;<HL> = DPH ADDRESS
-	mov		a,e
-	rar
-	rc				;IF DRIVE WAS LOGGED
-;
-;	DRIVE NEVER LOGGED -- CALL DRIVE SELECT
-;
-	shld	DPHADRS	;SAVE DPH ADDRESS IN CASE WE NEED TO RETRY
-	call	sreta	;SET RETRY ADDRESS FOR CKERR
-	lhld	DPHADRS
-	push	h		;DPH ADDRESS
-	call	seldrv	;DO THE GETDPB STUFF
-	pop		h		;DPH ADDRESS
-	jmp		ckerr	;CHECK ERROR, GIVE ERROR MSG ETC
-
-
-;********************************************************
-;	HOME THE HEAD TO TRACK 0			*
-;********************************************************
-
-home:
-	lxi		b,0
-
-;********************************************************
-;	SET TRACK GIVEN IN <BC>				*
-;********************************************************
-
-settrk:
-	call	onelist
-	db		oc$trak
-	mov		a,c
-	call	sendcmd
-	mov		a,b
-	jmp		sendcmd
-
-;********************************************************
-;	SET SECTOR (RECORD NUMBER) GIVEN BY <C>		*
-;********************************************************
-
-setsec:
-	call	onelist
-	db		oc$recd
-	mov		a,c
-	jmp		sendcmd
-
-;********************************************************
-;	SET DMA GIVEN BY <BC> FOR READ/WRITE BUFF	*
-;********************************************************
-
-setdma:
-	mov		l,c
-	mov		h,b
-	shld	dmaadr
-	IF NOT DMA
-	ret
-	ENDIF ;NOT DMA
-	IF NOT ROM$MON
-	IF DMA
-	call	onelist
-	db		OC$DADR	;OMNI COMMAND: SET DMA ADDRESS
-	mov		a,c
-	call	sendcmd
-	mov		a,b
-	call	sendcmd
-	mvi		a,dmaext
-	jmp		sendcmd
-	ENDIF ;DMA
-	IF NOT ROM$MON
-
-;********************************************************
-;	READ A LOGICAL SECTOR				*
-;********************************************************
-
-read:
-	call	sreta
-	call	cmdlist
-	db		2
-	db		oc$read
-	db		oc$gens
-	IF NOT DMA
-	lhld	dmaadr
-	call	getdat
-	jmp		ckerr
-	ENDIF ;NOT DMA
-	IF ROM$MON
-	IF DMA
-	jmp		dma$rw
-	ENDIF ;DMA
-	IF NOT ROM$MON
-
-;********************************************************
-;	WRITE A LOGICAL SECTOR				*
-;********************************************************
-;	WRITE THE SELECTED CP/M SECTOR
-;		AT ENTRY C:	0 - FOR NORMAL SECTOR WRITE
-;					1 - WRITE DIRECTORY SECTOR
-;					2 - WRITE SECTOR OF A NEW DATA BLOCK
-;
-
-write:
-	mov		a,c			;Get WRITE$MODE
-	sta		writea
-	call	sreta
-	call	onelist
-	db		oc$writ		;OMNI COMAND: Write Logical Record
-	lda		writea
-	call	sendcmd		;Send P1
-	IF NOT DMA
-	call	inchar		;GET GENERAL STATUS BEFORE DATA XFER
-	ora		a
-	jnz		ckerr
-	mvi		c,128
-	lhld	dmaadr
-write1:
-	in		omnistat
-	add		a
-	jc		write1
-	mov		a,m
-	out		omnidata
-	inx		h
-	dcr		c
-	jnz		write1
-	xra		a			;FAKE GOOD STATUS FOR CKERR
-	ENDIF ;NOT DMA
-	IF NOT ROM$MON
-	IF DMA
-dma$rw:
-	call	inchar		;GET GENERAL STATUS AFTER DATA XFER
-	ENDIF ;DMA
-	IF NOT ROM$MON
-
-;********************************************************
-;	SUBROUTINE FOR UNEXPECTED DRIVE ERRORS		*
-;********************************************************
-
-ckerr:
-	ora		a
-	rz					;IF NO ERROR
-	call	onelist
-	DB	OC$EXTS			;OMNI COMMAND: GET EXTENDED STATUS
-;						(THIS IS THE ONLY WAY TO ZERO GENSTAT)
-	call	outm$cr		;OUT MESSAGE = "DISK I/O ERROR -"
-	DB	'DISK I/O ERROR'
-	
-	mvi		b,9			;LENGTH OF EXTENDED STATUS LIST
-ckerr1:
-	mvi		c,' '
-	call	ioconout
-	call	inchar		;GET EXTENDED STATUS BYTE FROM OMNI
-	call	hexout		;SEND TO CONSOLE
-	dcr		b
-	jnz		ckerr1		;IF NO MORE EXTENDED STATUS
-	call	outm$cr		;OUT MESSAGE = "^C ABORT etc..."
-	DB	'^C ABORT, cr IGNORE, ELSE RETRY',0DH,0AH,0
-	call	ioconin		;WAIT FOR RESPONSE FROM USER
-	lxi		h,0			;FOR "IGNORE" EXIT WHEN USED FROM SELDSK
-	cpi		0DH
-	rz					;IF <cr> THEN RTN TO BDOS WITH <A> NON-ZERO
-	lhld	RETRY$ADDRESS
-	sui		'C'-40H
-	jz		wboot0		;IF ^C WE ABORT CHANGING LOGGED DISK TO "A:"
-	pchl
-;
-; OUTPUT NULL TERMINATED MESSAGE FOLLOWING CALL
-;
-om$crlf:
-	call	outmcr
-	DB		0
-	ret
-outm$cr:
-	call	outm
-	DB		0DH,0AH,0
-outm:
-	xthl				;H,L POINTS TO MESSAGE STRING
-	mov		a,m
-	inx		h
-	ora		a
-	jz		eom			;IF AT END OF MESSAGE
-	mov		c,a
-	call	ioconout	;SEND TO CONSOLE
-	jmp		outm+1		;REPEAT UNTIL DONE
-eom:
-	xthl				;SP POINTS TO AFER MESSAGE
-	ret
-
-HEXOUT:
-	PUSH	PSW
-	RAR 
-	RAR 
-	RAR
-	RAR					;POSITION HIGH ORDER NIBBLE...
-	CALL	HEXOUT1		;...SEND TO CONSOLE
-	POP		PSW			;NOW LOW NIBBLE
-HEXOUT1:
-	ANI		0FH			;ISOLATE NIBBLE
-	SUI		10
-	JM		HEXOUT2		;IF CONVERTING 0-9
-	ADI		7			;ELSE CONVERTING A-F
-HEXOUT2:
-	ADI		10+'0'		;NIBBLE NOW CONVERTED TO ASCII
-	MOV		C,A
-	JMP		IOCONOUT	;SEND TO CONSOLE AND RETURN TO OUR CALLER
-
-;********************************************************
-;	SET RETRY ADDRESS FOR OMNI I/O ERRORS		*
-;********************************************************
-
-sreta:
-	xthl
-	shld	RETRY$ADDRESS
-	xthl
-	ret
-
-;********************************************************
-;	SELECT A NEW DRIVE				*
-;********************************************************
-;
-;	NOTE USE OF TRACK 4 IN GETDPB.  ONE MIGHT THINK THAT TRACK
-;	TWO (DIRECTORY) WOULD BE BETTER.  TRACK 4 WAS SELECTED
-;	BECAUSE (1) WE DO NOT WANT THE DIRECTORY TRACK BECAUSE
-;	IT IS THE MOST LIKELY TO BE ZAPPED BY A SYSTEM PROBLEM,
-;	(2) WE DO NOT WANT ANY SYSTEM TRACKS BECAUSE THEY MIGHT
-;	BE FORMATTED AT SOME DENSITY OTHER THAN THE REST OF THE
-;	DISK AND (3) THE SYSTEM TAKES 3 TRACKS ON SOME 5" FLOPPIES.
-
-seldrv:
-	lxi		d,10		;DPH OFFSET TO DPB
-	dad		d
-	mov		e,m			;LOW DPB
-	inx		h
-	mov		h,m			;HIGH DBP
-	mov		l,e			;<HL> = DPB ADDRESS
-	call	cmdlist
-	DB		5			;LENGTH OF LIST
-	DB		OC$TRAK		;OMNI COMMAND: SELECT TRACK (SEEK)
-	DW		4			;GO TO TRACK 4 FOR GETDPB FUNCTION
-	DB		OC$GDPB		;OMNI COMMAND: GET DPB
-	DB		OC$GENS		;OMNI COMMAND: GET GENERAL STATUS
-;				     (USED TO END GETDAT LOOP)
-;	... FALL INTO GETDAT
-
-;********************************************************
-;	SUBROUTINE FOR BLOCK READ			*
-;							*
-;	NOTE:	THIS SUBROUTINE READS DATA UNTIL	*
-;		THE OMNI CONTROLLER ACCEPTS THE		*
-;		GENERAL STATUS COMMAND			*
-;********************************************************
-
-getdat:
-	in		OMNISTAT
-	rrc					;Rotate right to test bit 0
-	jnc		getdat		;IF NOTHING TO GET FROM OMNI
-	ani		40H			;(WHAT DO WE HAVE HERE: DATA -OR- GEN STATUS?)
-	in		OMNIDATA	;TAKE IT, WHATEVER IT IS
-	rz					;IF IT IS GENERAL STATUS, THEN RETURN
-	mov		m,a			;ELSE...PUT INTO BUFFER
-	inx		h			;Advance RAM pointer
-	jmp		getdat		;KEEP ON KEEPING ON
-
-;****************************************************************
-;	SUBROUTINE TO ACCEPT ONE BYTE FROM DISK CONTROLLER	*
-;****************************************************************
-
-inchar:
-	in		OMNISTAT
-	rrc					;Rotate right to test bit 0
-	jnc		inchar		;IF OMNI HAS NOT YET SENT REPLY
-	in		OMNIDATA	;ACCEPT REPLY
-	ret
-
-;********************************************************
-;	SUBROUTINE TO ISSUE COMMAND LIST		*
-;********************************************************
-
-cmdlist:
-	xthl
-	mov		c,m			;FETCH LENGTH OF LIST
-	inx		h
-cmdlist1:
-	mov		a,m			;NEXT BYTE TO SEND
-	inx		h
-	call	sendcmd		;BYTE TO CONTROLLER
-	dcr		c
-	jnz		cmdlist1	;IF MORE COMMANDS TO SEND
-	xthl
-	ret
-
-;********************************************************
-;	SUBROUTINE TO SEND CONSTANT BYTE TO OMNIDISK	*
-;********************************************************
-
-onelist:
-	xthl
-	mov		a,m
-	inx		h
-	xthl
-;	...	FALL INTO SENDCMD
-
-;********************************************************
-;	SUBROUTINE TO SEND COMMAND TO DISK CONTROLLER	*
-;********************************************************
-
-sendcmd:
-	push 	psw			;BYTE TO SEND TO OMNI
-	in		OMNISTAT
-	rlc					;Rotate left to test bit 7
-	jc		sendcmd+1	;IF OMNI NOT READY TO TAKE BYTE
-	pop		psw
-	out		OMNIDATA
-	ret
-;
-;********************************************************
-;********************************************************
-;
-	ENDIF ;NOT ROM$MON
-;
-;********************************************************
-;********************************************************
+COLDE:
+	JMP	COLD		;COLD ENTRY
+	JMP	PRMPTSP		;WARM ENTRY
 
 ;********************************************************
 ;	ROM MONITOR
 ;********************************************************
-	IF ROM$MON
-CBOOT:
+
+COLD:
 	LXI		SP,STACK
 ; INIT RAM AREA
 	LXI		H,UNIT		;BASE OF RAM
@@ -1105,7 +357,7 @@ INITCMD:
 	in	SERDATA		; Clear junk
 	in	SERDATB		; Clear junk
 	ENDIF	;ISIO2
-	IF ROM$MON
+
 ;----------------------------------------
 ;Initialize the Compupro System Support-1
 ;----------------------------------------
@@ -1122,7 +374,7 @@ INITCMD:
 	out	CCTRL
 	in	SERDATA		;Clear junk
 	ENDIF ;CSS1
-	IF ROM$MON
+
 ;
 ; TRY BOOTING FLOPPY DISK
 	CALL	INITFD		;INIT OMNIDISK
@@ -1132,7 +384,6 @@ INITCMD:
 	JZ		BOOTOK		;NO ERRORS?
 	CALL	GET$EXTS	;CLEAR GEN$STAT
 	ENDIF ;AUTOBOOT
-	IF ROM$MON
 ;
  	CALL	SETSYSP		;SET UP I/O PORTS BY HITTING SPACE BAR
 SIGN:
@@ -1199,7 +450,6 @@ JMPF86:
 	DW	400H,0					;400:00
 E86	EQU	$
 	ENDIF ;COMPUPRO85
-	IF ROM$MON
 
 ;****************************************************
 ;FIND THE APPROPRIATE SYSTEM PORT AND SET BAUD RATE IF
@@ -1258,7 +508,6 @@ BAUDSET1:
 	mvi	a,CTL2651	;Enable Tx, Rx, RTS=low, DTR=low
 	out	CCTRL
 	ENDIF ;CSS1
-	IF ROM$MON
 	RET
 
 ;**************************************************
@@ -1904,14 +1153,13 @@ SERINB:
 	RZ				;A=0
 	IN   SERDATB
 	ENDIF ;ISIO2
-	IF ROM$MON
+
 	IF CSS1
 	XRA	A			;A=0
 	ENDIF ;CSS1
-	IF ROM$MON
 	RET
-	ENDIF ;ISIO2
-	IF ROM$MON
+
+
 ;
 ;*********************************
 SEROUTA:
@@ -1930,7 +1178,6 @@ SEROUTB:
 	LDA  ASAVE		;GET OUTPUT CHAR
 	OUT  SERDATB
 	ENDIF ;ISIO2
-	IF ROM$MON
 	RET
 ;
 IOLISTST:
@@ -1938,11 +1185,9 @@ IOLISTST:
 	IN  SERCTLB
 	ANI SERTX
 	ENDIF ;ISIO2
-	IF ROM$MON
-	IF CSS1
+	IF NOT ISIO2
 	XRA A			;NOT READY
-	ENDIF ;CSS1
-	IF ROM$MON
+	ENDIF ;NOT ISIO2
 	RET
 ;
 IOPUNCH:
@@ -2167,7 +1412,6 @@ BAUDTBL:
 	DB	06H		;600 baud
 	DW	CBD600
 	ENDIF	;CSS1
-	IF ROM$MON
 	DB 0		;END OF TABLE
 CMDTBL:
 	DB 'A'
@@ -2273,18 +1517,16 @@ CMDTBL2
 ;SYSTEM MESSAGES
 ;*****************
 SIGNON:
-	DB	'(C)1984  MONITOR WITH OMNIDISK '
+	DB	'(C)1984  MONITOR REV 2 WITH OMNIDISK EXTENSIONS '
 	IF NOT DMA
 	DB	'NON-'
 	ENDIF ;NOT DMA
-	IF ROM$MON
 	DB	'DMA DEBUG',0DH,0AH,0
 
 	IF CSS1
 MSG6	DB 'INVALID BAUD',0
 MSGSER	DB 'BAUD SERIAL',0DH,0AH,0
 	ENDIF ;CSS1
-	IF ROM$MON
 
 ;
 ;******************************************
@@ -2498,7 +1740,6 @@ BOOT86:
 	IF COMPUPRO85
 	IN		SWAP
 	ENDIF ;COMPUPRO85
-	IF ROM$MON
 	RET					;BACK TO ROM
 ; READ BOOT BLOCK
 ABOOT:
@@ -2725,7 +1966,6 @@ FREAD:
 	IF DMA
 	JMP		DMA$RW
 	ENDIF ;DMA
-	IF ROM$MON
 
 
 ;****************************************
@@ -2766,11 +2006,9 @@ PWRITE:
 	JNZ		PWNXT
 	XRA		A
 	ENDIF ;NOT DMA
-	IF ROM$MON
 	IF DMA
 	CALL	INCHAR
 	ENDIF ;DMA
-	IF ROM$MON
 	JMP		CKERR
 
 
@@ -3062,11 +2300,9 @@ INITFD:
 	DB		DMAPRI		;NOTE TO USERS WHERE DMA KILLS YOUR SYSTEM:
 						;BIOS DOES NOT CAUSE ANY DMA
 	ENDIF ;NOT DMA		;UNLESS MEMORY DISK IS USED.
-	IF ROM$MON
 	IF DMA
 	DB		DMAPRI+80H	;BIOS USES DMA FOR READ/WRITE
 	ENDIF ;DMA
-	IF ROM$MON
 
 	POP		PSW
 	PUSH 	PSW
@@ -3189,17 +2425,20 @@ VERIFY:
 FORMAT:
 	MVI		A,'F'
 	STA		LINE
-	MVI		B,0000$0001b	;FORMAT
+	MVI		B,0000$0011b	;FORMAT=0000$0001b, FORMAT+VERIFY=0000$0011b 
 	CALL	IHEX		;HL=FORMAT CODE
 	MOV		A,L
 	CPI		14H+1		;>14?
 	JNC		GETFDREL	;YES
 	CALL	FMT			;NO, BEGIN FORMAT
+	IF	0
 	RNZ					;DON'T VERIFY IF BAD FORMAT
 	MVI		A,'V'
 	STA		LINE
 	MVI		B,0000$0010b	;VERIFY
 	JMP		FIS8
+	ENDIF
+	RET
 
 FMT:
 	MOV		D,A			;NO, SAVE FORMAT CODE
@@ -3304,7 +2543,7 @@ DLY:
 ;********************************************************
 ;********************************************************
 ;
-	IF ROM$MON
+
 seldsk:
 	lxi		h,0		;USED FOR <H>=0 AND IF SELECT ERROR
 	mov		a,c
@@ -3358,7 +2597,6 @@ setdma:
 	IF NOT DMA
 	ret
 	ENDIF ;NOT DMA
-	IF ROM$MON
 	IF DMA
 	call	onelist
 	db		OC$DADR	;OMNI COMMAND: SET DMA ADDRESS
@@ -3369,7 +2607,6 @@ setdma:
 	mvi		a,dmaext
 	jmp		sendcmd
 	ENDIF ;DMA
-	IF ROM$MON
 
 ;********************************************************
 ;	READ A LOGICAL SECTOR				*
@@ -3386,11 +2623,9 @@ read:
 	call	getdat
 	jmp		ckerr
 	ENDIF ;NOT DMA
-	IF ROM$MON
 	IF DMA
 	jmp		dma$rw
 	ENDIF ;DMA
-	IF ROM$MON
 
 ;********************************************************
 ;	WRITE A LOGICAL SECTOR				*
@@ -3426,12 +2661,11 @@ write1:
 	jnz		write1
 	xra		a			;FAKE GOOD STATUS FOR CKERR
 	ENDIF ;NOT DMA
-	IF ROM$MON
 	IF DMA
 dma$rw:
 	call	inchar		;GET GENERAL STATUS AFTER DATA XFER
 	ENDIF ;DMA
-	IF ROM$MON
+
 
 ;********************************************************
 ;	SUBROUTINE FOR UNEXPECTED DRIVE ERRORS		*
@@ -3592,12 +2826,8 @@ sendcmd:
 NOTRACE
 	POP 	PSW
 	RET
-	ENDIF
 
-
-	ENDIF ;ROM$MON
-
-ROM		EQU	$-CBOOTE
+ROM		EQU	$-COLDE
 R$FREE	EQU	ROMTOP-ROM	;2K ROM
 	IF ROM/ROMTOP
 R$OVER	EQU	-R$FREE	;HOW MUCH YOU ARE OVER
