@@ -1,35 +1,35 @@
 ;TITLE	'+++ CP/M 2.2 BIOS FOR OMNI +++'
 ;PAGE	0
 ; DON'T FORGET TO CHANGE DATE IN "SIGNON" MESSAGE
-;****************************************************************
-;*								*
+;************************************************
+;*												*
 ;*		   ****    ***    ***     ***			*
 ;*		   *   *    *    *   *   *   *			*
-;*		   *   *    *    *   *   *			*
+;*		   *   *    *    *   *   *				*
 ;*	  	   ****     *    *   *    ***			*
 ;*		   *   *    *    *   *       *			*
 ;*		   *   *    *    *   *   *   *			*
 ;*		   ****    ***    ***     ***			*
-;*								*
-;****************************************************************
-;*								*
-;*	PROPERTY OF:	FULCRUM COMPUTER PRODS			*
-;*			451 ALLEN COURT				*
-;*			HEALSBURG, CALIFORNIA			*
-;*					 USA			*
-;*								*
-;*			  (707) 433-0202			*
-;*								*
-;****************************************************************
-;*								*
-;*	BIOS VERSION 5.1:					*
-;*								*
-;*	FOR USE WITH THE FULCRUM AMAZING (TAH,			*
-;*	TAH, TAH, TAAAAAH) OMNIDISK CONTROLLER			*
-;*								*
-;****************************************************************
-;*                     Installation Notes:			*
-;****************************************************************
+;*												*
+;************************************************
+;*												*
+;*	PROPERTY OF:	FULCRUM COMPUTER PRODS		*
+;*			451 ALLEN COURT						*
+;*			HEALSBURG, CALIFORNIA				*
+;*					 USA						*
+;*												*
+;*			  (707) 433-0202					*
+;*												*
+;************************************************
+;*												*
+;*	BIOS VERSION 5.1:							*
+;*												*
+;*	FOR USE WITH THE FULCRUM AMAZING (TAH,		*
+;*	TAH, TAH, TAAAAAH) OMNIDISK CONTROLLER		*
+;*												*
+;************************************************
+;*                     Installation Notes:		*
+;************************************************
 ; Using DDT or Zsid:
 ; IBIOS.HEX
 ; R2580				(64 K model)
@@ -43,9 +43,9 @@
 ;	THEREFORE, CHANGE THE LOGICAL ASSIGNMENTS IF YOU CHANGE
 ;	THE CPM DRIVE ASSIGNMENTS, OUCH.
 ;
-;****************************************************************
+;****************************************************
 ;                   	REVISION HISTORY			*
-;****************************************************************
+;****************************************************
 ;Fifth Rev date Mar 13, 1987
 ;	Added 5" drive --> E: 
 ;	changed to Shugart ST412
@@ -57,7 +57,7 @@
 ;	1.	If HD$USE is FALSE then A:,B:,C:& D: Are Floppies
 ;	2.	If HD$USE is TRUE then A: & B: & E: & F: are 
 ;		floppies and C: & D: are the hard disk.
-;-------------------------------------------------------------------------
+;--------------------------------------------------------------
 ;Current drive assignments are depend on the A$VERSION equate
 ;And the USE$8 and USE$5 equates.
 ;
@@ -100,7 +100,7 @@
 ;	C> HD Shugart ST412  5M		Logical device 2	Physical 18
 ;	D> HD Shugart ST412  5M		Logical device 3	Physical 19
 ;	E - P Not used			N/A			N/A
-;--------------------------------------------------------------------------
+;--------------------------------------------------------------
 ;Third  rev date July 8, 1986
 ;	added TM602S Hard disk
 ;Second rev date Jan 4, 86 
@@ -121,12 +121,12 @@
 ;	ADD LEN BYTE BEFORE MEMORY DISK DPB
 
 ;********************************************************
-;	AS RELEASED, THIS ASM FILE IS SET UP FOR	*
-;	ASSEMBLY WITH THE CP/M (tm) "ASM" ASSEMBLER.	*
-;							*
-;	ANY COMMENTED EQUATE STARTING WITH		*
-;		;<== 'COMMENT LINE'			*
-;	CAN BE CHANGED BY YOU, ALL OTHERS ARE FIXED	*
+;	AS RELEASED, THIS ASM FILE IS SET UP FOR			*
+;	ASSEMBLY WITH THE CP/M (tm) "ASM" ASSEMBLER.		*
+;														*
+;	ANY COMMENTED EQUATE STARTING WITH					*
+;		;<== 'COMMENT LINE'								*
+;	CAN BE CHANGED BY YOU, ALL OTHERS ARE FIXED			*
 ;********************************************************
 
 FALSE	EQU	0
@@ -269,12 +269,12 @@ DMAPRI   EQU	0Fh		;<== DMA PRIORITY
 ; OR ANY SHORTER (BOMBS THE SHURGARTS)
 WDELAY	EQU	6		;<== DELAY (IN 250MS TICKS) HOLDING WRITES
 LDELAY	EQU	20		;<== FD HEADS LOADED AFTER USE IN 250MS TICKS
-STEP8	EQU	6		;<== 8" FD STEP RATE IN MS
-LOAD8	EQU	35		;<== 8" FD HEAD LOAD TIME IN MS
-SETL8	EQU	14		;<== 8" FD HEAD SETTLE TIME IN MS (AFTER SEEK)
-STEP5	EQU	6		;<== 5" FD STEP RATE IN MS
-LOAD5	EQU	0		;<== 5" FD HEAD LOAD TIME IN MS
-SETL5	EQU	15		;<== 5" FD HEAD SETTLE TIME IN MS (AFTER SEEK)
+STEP8	EQU	3		;<== 8" FD STEP RATE IN MS
+LOAD8	EQU	8		;<== 8" FD HEAD LOAD TIME IN MS
+SETL8	EQU	0		;<== 8" FD HEAD SETTLE TIME IN MS (AFTER SEEK)
+STEP5	EQU	4		;<== 5" FD STEP RATE IN MS
+LOAD5	EQU	8		;<== 5" FD HEAD LOAD TIME IN MS
+SETL5	EQU	0		;<== 5" FD HEAD SETTLE TIME IN MS (AFTER SEEK)
 ;
 ;	HARD DISK CONFIGURATION PARAMETERS
 ;
@@ -834,6 +834,11 @@ RPDATA	EQU	00H		;<== READER/PUNCH DATA PORT
 RPTXR	EQU	1h		;<== READER/PUNCH TRANSMITTER READY (TxRDY)
 RPRXR	EQU	2h		;<== READER/PUNCH RECIEVER READY (RxRDY)
 
+; IF YOU HAVE A FRONT PANEL SET THE FOLLOWING EQUATE TO TRUE.
+; THEN FIND THE CONDITIONAL ASSEMBLY THAT IS CONTROLLED BY THIS EQUATE.
+; MAKE IT DO WHATEVER YOU WANT.
+
+FRONTP	EQU	FALSE		;CPA FRONT PANEL EQUATE
 
 ;******************************************************************************
 ;  PARAMATERS BELOW THIS POINT SHOULD REQUIRE NO MODS
@@ -915,9 +920,10 @@ OC$INIT	EQU	255		;Re-Initialize Omnidisk Controller
 ;	ALL OTHER EQUATES (do not change)
 
 IOBYTE		EQU	3				;INTEL I/O BYTE
+DEFIOBYTE	EQU	00$00H			;00 (A:) FOR CDISK, 00 FOR IOBYTE
 TPA			EQU	100H			;START OF TRANSIENT PGM AREA
 
-LENBSTRAP	EQU	80H				;LENGTH RESERVED FOR BOOTSTRAP
+LENBSTRAP	EQU	40H				;LENGTH RESERVED FOR BOOTSTRAP
 BSORG		EQU	CCP-LENBSTRAP	;BOOTSTRAP ORGIN AS ASSEMBLED
 								;NOTE: BOOTSTRAP IS LOADED INTO
 								;      AND RUNS AT LOCATION 0000
@@ -1067,6 +1073,9 @@ CWFLAG:	DB	0		;COLD/WARM BOOT FLAG
 ;********************************************************
 
 ;	CONSOLE STATUS - CON:
+UD$CONST EQU	FALSE		;<== USE DISPATCH FOR IOCONST IF TRUE
+							;(IF FALSE, THEN CRTSTAT IS ASSUMED)
+	IF UD$CONST
 IOCONST:
 	CALL	DISPATCH
 	DB	1		;USE IOBYTE BITS 1-0
@@ -1074,8 +1083,12 @@ IOCONST:
 	DB	CRTSTAT-$	;01 - CRT:	"
 	DB	CRTSTAT-$	;10 - BAT:	"
 	DB	CRTSTAT-$	;11 - UC1:	"
+	ENDIF
 
 ;	CONSOLE IN - CON:
+UD$CONIN EQU	FALSE		;<== USE DISPATCH FOR IOCONIN IF TRUE
+							;(IF FALSE, THEN CRTIN IS ASSUMED)
+	IF UD$CONIN
 IOCONIN:
 	CALL	DISPATCH
 	DB	1		;USE IOBYTE BITS 1-0
@@ -1083,8 +1096,12 @@ IOCONIN:
 	DB	CRTIN-$		;01 - CRT:	"
 	DB	CRTIN-$		;10 - BAT:	"
 	DB	CRTIN-$		;11 - UC1:	"
+	ENDIF
 
 ;	CONSOLE OUT - CON:
+UD$CONOUT EQU	FALSE		;<== USE DISPATCH FOR IOCONOUT IF TRUE
+							;(IF FALSE, THEN CRTOUT IS ASSUMED)
+	IF UD$CONOUT
 IOCONOUT:
 	CALL	DISPATCH
 	DB	1		;USE IOBYTE BITS 1-0
@@ -1092,8 +1109,12 @@ IOCONOUT:
 	DB	CRTOUT-$	;01 - CRT:	"
 	DB	CRTOUT-$	;10 - BAT:	"
 	DB	CRTOUT-$	;11 - UC1:	"
+	ENDIF
 
 ;	LIST OUT - LST:
+UD$LIST	EQU	FALSE			;<== USE DISPATCH FOR IOLIST IF TRUE
+							;(IF FALSE, THEN LPTOUT IS ASSUMED)
+	IF UD$LIST
 IOLIST:
 	CALL DISPATCH
 	DB	3		;USE IOBYTE BITS 7-6
@@ -1103,6 +1124,7 @@ IOLIST:
 	DB	CRTOUT-$	;11 - UL1: (CRTSOLE OUTPUT)
 
 ;	LIST STATUS -LST:
+
 IOLISTST:
 	CALL DISPATCH
 	DB	3		;USE IOBYTE BITS 7-6
@@ -1110,8 +1132,12 @@ IOLISTST:
 	DB	CRTSTAT-$	;01 - CRT:	"
 	DB	LPTSTAT-$	;10 - LPT: (LINE PRINTER OUTPUT)
 	DB	CRTSTAT-$	;11 - UL1: (CRTSOLE OUTPUT)
+	ENDIF
 
 ;	PUNCH OUT - PUN:
+UD$PUNCH EQU	FALSE		;<== USE DISPATCH FOR IOPUNCH IF TRUE
+							;(IF FALSE, THEN PUNOUT IS ASSUMED)
+	IF UD$PUNCH
 IOPUNCH:
 	CALL	DISPATCH
 	DB	5		;USE IOBYTE BITS 5-4
@@ -1119,8 +1145,12 @@ IOPUNCH:
 	DB	PUNOUT-$	;01 - PTP: (HIGH SPEED PUNCH OUTPUT)
 	DB	CRTOUT-$	;10 - UP1: (CRTSOLE OUTPUT)
 	DB	CRTOUT-$	;11 - UP2:	"
+	ENDIF
 
 ;	READER IN - RDR:
+UD$READER EQU	FALSE		;<== USE DISPATCH FOR IOREADER IF TRUE
+							;(IF FALSE, THEN RDRIN IS ASSUMED)
+	IF UD$READER
 IOREADER:
 	CALL	DISPATCH
 	DB	7		;USE IOBYTE BITS 3-2
@@ -1128,10 +1158,15 @@ IOREADER:
 	DB	RDRIN-$		;01 - PTR: (HIGH SPEED READER INPUT)
 	DB	CRTIN-$		;10 - UR1: (CRT INPUT)
 	DB	CRTIN-$		;11 - UR2:	"
+	ENDIF
 
 ;********************************************************
 ;	LIST CHARACTER IN C				*
 ;********************************************************
+
+	IF NOT UD$LIST
+IOLIST:					;DEFINE HERE IF NOT USING DISPATCH
+	ENDIF
 
 LPTOUT:
 	IF LST
@@ -1149,6 +1184,10 @@ LPTOUT:
 ;********************************************************
 ;	RETURN LIST STATUS (FF IF READY, ELSE 0)	*
 ;********************************************************
+
+	IF NOT UD$LIST
+IOLISTST:				;DEFINE HERE IF NOT USING DISPATCH
+	ENDIF
 
 LPTSTAT:
 	IF LST
@@ -1171,6 +1210,11 @@ LPTSTAT:
 ;	<A>=00	KEYBOARD CHARACTER NOT READY		*
 ;	<A>=FF  KEYBOARD CHARACTER READY		*
 ;********************************************************
+
+	IF NOT UD$CONST
+IOCONST:				;DEFINE HERE IF NOT USING DISPATCH
+	ENDIF
+
 CRTSTAT:
 	IN		SER1STAT	;STATUS PORT
 	ANI		RxRDY		;TEST RxRDY
@@ -1181,6 +1225,11 @@ CRTSTAT:
 ;********************************************************
 ;	CRTIN RETURNS KEYBOARD CHARACTER IN <A>		*
 ;********************************************************
+
+	IF NOT UD$CONIN
+IOCONIN:				;DEFINE HERE IF NOT USING DISPATCH
+	ENDIF
+
 CRTIN:
     CALL	CRTSTAT
 	JZ		CRTIN		;GET RxRDY
@@ -1191,6 +1240,10 @@ CRTIN:
 ;********************************************************
 ;	CRT SENDS THE CHARACTER IN <C> TO OUTPUT
 ;********************************************************
+
+	IF NOT UD$CONOUT
+IOCONOUT:				;DEFINE HERE IF NOT USING DISPATCH
+	ENDIF
 
 CRTOUT:
     IN  	SER1STAT    ;GET STATUS
@@ -1203,6 +1256,10 @@ CRTOUT:
 ;********************************************************
 ;	PUNCH CHARACTER IN REGISTER <C>			*
 ;********************************************************
+
+	IF NOT UD$PUNCH
+IOPUNCH:				;DEFINE HERE IF NOT USING DISPATCH
+	ENDIF
 
 PUNOUT:
 	IF RDRPUN
@@ -1218,6 +1275,10 @@ PUNOUT:
 ;********************************************************
 ;	READ CHARACTER INTO <A> FROM READER DEVICE	*
 ;********************************************************
+
+	IF NOT UD$READER
+IOREADER:				;DEFINE HERE IF NOT USING DISPATCH
+	ENDIF
 
 RDRIN:
 	IF RDRPUN
@@ -1240,6 +1301,7 @@ RDRIN:
 ;	 ACCESS SUBROUTINE.)				*
 ;********************************************************
 
+IF UD$CONST OR UD$CONIN OR UD$CONOUT OR UD$LIST OR UD$PUNCH OR UD$READER
 DISPATCH:
 	XTHL			;SAVE CALLER'S <HL>, GET TABLE ADDR
 	MOV		D,M		;SHIFT COUNT
@@ -1257,7 +1319,7 @@ DSHFT:
 	DAD		D		;ADD BACK THE "-$" OR DISPATCH ADDRESS TO <HL>
 	XTHL			;PUT DISPATCH ADDRESS, RESTORE CALLER'S <HL>
 	RET				;GO TO ROUTINE
-
+ENDIF
 
 ;********************************************************
 ;	WBOOT LOADS CP/M FROM THE SYSTEM TRACKS		*
@@ -1313,7 +1375,7 @@ WBOOT1:
 	JNZ		WBOOT		;IF ERROR RELOADING CCP WE GO TRY AGAIN
 	MVI		A,1
 	STA		CWFLAG		;Set warm boot flag
-						;FALL INTO GOCPM
+;	...					;FALL INTO GOCPM
 
 ;********************************************************
 ;	SET PARAMETERS AND GO TO CP/M			* 		
@@ -1331,6 +1393,11 @@ GOCPM:
 
 	LXI		B,80H		;** SETUP DEFAULT
 	CALL	SETDMA		;** DMA ADDRESS
+
+	IF FRONTP
+	XRA	A
+	OUT	0FFH			;0 FRONT PANEL
+	ENDIF
 
 ;	CLEAN UP AND GO TO CCP
 
@@ -1409,8 +1476,7 @@ HOME:
 SETTRK:
 	CALL	ONELIST
 	DB	OC$TRAK			;OMNI COMMAND: SELECT TRACK (CYLINDER)
-	MOV		A,C
-	CALL	SENDCMD		;LOW BITS OF TRACK NUMBER TO OMNI
+	CALL	CMDINC		;LOW BITS OF TRACK NUMBER TO OMNI
 	MOV		A,B
 	JMP		SENDCMD		;HIGH BITS OF TRACK NUMBER TO OMNI
 
@@ -1421,6 +1487,7 @@ SETTRK:
 SETSEC:
 	CALL	ONELIST
 	DB	OC$RECD			;OMNI COMMAND: SELECT SECTOR NUMBER
+CMDINC:
 	MOV		A,C			;THE SECTOR NUMBER
 	JMP		SENDCMD
 
@@ -1556,6 +1623,12 @@ CKERR1:
 	RZ					;IF cr THEN RTN TO BDOS WITH <A> NON-ZERO
 	SUI		'C'-40H
 	JZ		WBOOT0		;IF ^C WE ABORT CHANGING LOGGED DISK TO "A:"
+USE$ESC	EQU	FALSE
+	IF	USE$ESC
+	CPI	1BH-('C'-40H)
+	MVI	A,OC$IERR
+	CZ	SENDCMD			;IF ESC HIT TRY TO IGNORE ERROR
+	ENDIF
 	JMP		$-$			;ELSE...RETRY FAILED OPERATION
 RETRY$ADDRESS	EQU	$-2
 ;
@@ -1842,6 +1915,7 @@ SIGNON:
 	DB	CR,LF
 	ENDIF ;NOT TERSE
 
+	DB	'Fulcrum Omnidisk (c)1987 '
 	DB	'0'+MSIZE/10		;CP/M MEMORY SIZE
 	DB	'0'+(MSIZE MOD 10)
 	DB	'K CP/M '			;CP/M VERSION NUMBER
@@ -1871,7 +1945,7 @@ SIGNON:
 
 CBOOT:
 	LXI		SP,TPA			;MEM BELOW TPA FOR STACK
-	LXI		H,0081H			;00 (A:) FOR CDISK, 81 FOR IOBYTE
+	LXI		H,DEFIOBYTE
 	SHLD	IOBYTE			;IOBYTE IS LOC 3, CDISK IS LOC 4
 	XRA		A				;A=0
 	STA		CWFLAG			;CLEAR COLD BOOT FLAG
