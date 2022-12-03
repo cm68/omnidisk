@@ -6,24 +6,23 @@ VERS	EQU	30	;X.X
 ;	         1976, 1977, 1978, 1979
 ;
 
-NDISKS	EQU	16			;NUMBER OF DISK DRIVES
-SECSIZ	EQU	128			;SIZE OF EACH SECTOR
+NDISKS	EQU	16		;NUMBER OF DISK DRIVES (A - P)
+SECSIZ	EQU	128		;SIZE OF EACH SECTOR
 ;
 DPBTBL	equ	0AH
-FCB		EQU	005CH		;DEFAULT FCB LOCATION
-FCBCR	EQU	FCB+32		;CURRENT RECORD LOCATION
-TPA		EQU	0100H		;TRANSIENT PROGRAM AREA
-LOADP	EQU	0900H		;LOAD POINT FOR SYSTEM DURING LOAD/STORE
-LOADP1	EQU	LOADP+40H	;BOOT CODE
-RECORDS	EQU	LOADP+7EH	;CCP-3 (NUMBER OF RECORDS IN BOOT)
-BDOS	EQU	5H			;DOS ENTRY POINT
-BOOT	EQU	0			;JMP TO 'BOOT' TO REBOOT SYSTEM
-CONI	EQU	1			;CONSOLE INPUT FUNCTION
-CONO	EQU	2			;CONSOLE OUTPUT FUNCTION
-SELF	EQU	14			;SELECT DISK
-OPENF	EQU	15			;DISK OPEN FUNCTION
-DREADF	EQU	20			;DISK READ FUNCTION
-SETDMA	EQU	26			;SET DMA ADDRESS
+FCB		EQU	5CH		;DEFAULT FCB LOCATION
+FCBCR	EQU	FCB+32	;CURRENT RECORD LOCATION
+TPA		EQU	100H	;TRANSIENT PROGRAM AREA
+;
+; BDOS FUNCTIONS
+BDOS	EQU	5H		;DOS ENTRY POINT
+BOOT	EQU	0		;JMP TO 'BOOT' TO REBOOT SYSTEM
+CONI	EQU	1		;CONSOLE INPUT FUNCTION
+CONO	EQU	2		;CONSOLE OUTPUT FUNCTION
+SELF	EQU	14		;SELECT DISK
+OPENF	EQU	15		;DISK OPEN FUNCTION
+DREADF	EQU	20		;DISK READ FUNCTION
+SETDMA	EQU	26		;SET DMA ADDRESS
 ;
 ;
 ;********************************************************
@@ -35,9 +34,9 @@ OC$BOOT	EQU	0		;BOOT SYSTEM
 OC$SWRT	EQU	1		;WRITE SYSTEM (INVERSE OF BOOT)
 OC$MODE EQU	2		;DMA/IO MODE
 OC$FMTF	EQU	3		;FORMAT FLOPPY TRACK
-OC$DLDS EQU	4		;DEFINE LOGICAL DEVICE SET
-OC$GLDS	EQU	5		;GET LOGICAL DEVICE SET
-OC$FWRT	EQU	6       ;FORCE WRITE OF MODIFIED BUFFERS
+OC$DLDM EQU	4		;DEFINE LOGICAL DEVICE MAPPING
+OC$GLDM	EQU	5		;GET LOGICAL DEVICE MAPPING
+OC$FWRT	EQU	6		;FORCE WRITE OF MODIFIED BUFFERS
 OC$RBPH	EQU	7		;RESET BOOT PHANTOM
 OC$SKEW	EQU	8		;Set sector skew
 OC$UNIT	EQU	9		;SELECT (LOGICAL) UNIT
@@ -95,10 +94,12 @@ begin:
 	ei
 	jmp	start
 ;
-DATAPORT:	db	0A0H
+DATAPORT:
+	db	OMNIDATA				;Omnidisk DATA port
 	db	' COPYRIGHT (C) 1978, DIGITAL RESEARCH '
-	db	0DH,0AH
-	db	' CHANGES COPYRIGHT (c) 1983, W/W COMPONENTS',1AH
+	db	CR,LF
+	db	' CHANGES COPYRIGHT (c) 1983, W/W COMPONENTS'
+	db	01AH
 ;
 ;	READ CONSOLE CHARACTER TO REGISTER A
 getchar:
@@ -127,13 +128,14 @@ crlf:
 	call	putchar
 	ret
 ;
-;	PRINT MESSAGE ADDRESSED BY H,L TIL ZERO
+;	PRINT CR,LF, MESSAGE AT <HL>
 crmsg:
 	push	h
 	call	crlf
 	pop		h
 ;
 ;	DROP THRU TO OUTMSG0
+;	PRINT MESSAGE ADDRESSED BY H,L TIL ZERO
 outmsg:
 	mov		a,m
 	ora		a
@@ -183,105 +185,140 @@ open:
 ;	SELECT DISK GIVEN BY REGISTER A
 sel:
 	lxi		h,nodisk
-	sta		data0a
-	sta		data0c
+	sta		DEV
+	sta		LUN
 	call	cmdlist
 	db		004H				;LENGTH OF LIST
-	db		OC$UNIT				;09H
-data0a:
-	db		000H
-	db		OC$GLDS				;05H
-data0c:
-	db		000H
-;
+	db		OC$UNIT				;Command: select unit
+DEV	db		000H				;P1: unit#
+	db		OC$GLDM				;Command: get logical drive mapping
+LUN	db		000H				;P1: logical unit#
 	call	inchar
-	mov		b,a
-	ani		00CH
-	sta		sdisk
-	ora		b
-	rp
+	mov		b,a					;<B> = physical unit#
+	ani		00CH				;Isolate bits: 0000$1100
+	sta		sdisk				;00=8", 04=5.25", 08=WD, 0C=RAM
+	ora		b					;Restore <A>, set flags
+	rp							;Done if positive value
 flush:
-	call	inchar
-	ora		a
-	rp
-	jmp		flush
+	call	inchar				;Get byte from Omnidisk
+	ora		a					;Set flags
+	rp							;Done if positive value
+	jmp		flush				;Keep flushing bytes
 ;
+;************************************************
+;	SUBROUTINE FOR BLOCK READ					*
+;												*
+;	NOTE:	THIS SUBROUTINE READS DATA UNTIL	*
+;		THE OMNI CONTROLLER ACCEPTS THE			*
+;		GENERAL STATUS COMMAND					*
+;************************************************
 getdat:
-	in		OMNISTAT			;0DBH
-X01D1	EQU	$-1					;0A1H
-	rrc
-	jnc		getdat
-	ani		040H
-	in		OMNIDATA			;0DBH
-X01D9	EQU	$-1					;0A0H
-	rz
-	mov		m,a
+	in		OMNISTAT
+X01D1	EQU	$-1
+	rrc							;Rotate right to test bit 0
+	jnc		getdat				;IF NOTHING TO GET FROM OMNI
+	ani		40H					;(WHAT DO WE HAVE HERE: DATA -OR- GEN STATUS?)
+	in		OMNIDATA			;TAKE IT, WHATEVER IT IS
+X01D9	EQU	$-1
+	rz							;IF IT IS GENERAL STATUS, THEN RETURN
+	mov		m,a					;ELSE...PUT INTO BUFFER
 	inx		h
-	jmp		getdat
-;
+	jmp		getdat				;KEEP ON KEEPING ON
+
+;********************************************************
+;	SUBROUTINE TO SEND CONSTANT BYTE TO OMNIDISK		*
+;********************************************************
+
 onelist:
 	xthl
 	mov		a,m
 	inx		h
 	xthl
+;	...	FALL INTO SENDCMD
+
+;********************************************************
+;	SUBROUTINE TO SEND COMMAND TO DISK CONTROLLER		*
+;********************************************************
+
 sendcmd:
-	push	psw
-;
+	push	psw					;BYTE TO SEND TO OMNI
 sendcmd1:
-	in		OMNISTAT			;0DBH
-X01E6	EQU	$-1					;0A1H
-	ral
-	jc		sendcmd1
+	in		OMNISTAT
+X01E6	EQU	$-1
+	ral							;Rotate left to test bit 7
+	jc		sendcmd1			;IF OMNI NOT READY TO TAKE BYTE
 	pop		psw
-	out		omnidata			;0D3H
-X01ED	EQU	$-1					;0A0H
+	out		omnidata			;SEND BYTE TO OMNI
+X01ED	EQU	$-1
 	ret
-;
+
+;************************************************************
+;	SUBROUTINE TO ACCEPT ONE BYTE FROM DISK CONTROLLER		*
+;************************************************************
+
 inchar:
-	in		OMNISTAT			;0DBH
-X01F0	EQU	$-1					;0A1H
-	rar
-	jnc		inchar
-	in		OMNIDATA			;0DBH
-X01F6	EQU	$-1					;0A0H
+	in		OMNISTAT
+X01F0	EQU	$-1
+	rar							;Rotate right to test bit 0
+	jnc		inchar				;IF OMNI HAS NOT YET SENT REPLY
+	in		OMNIDATA			;ACCEPT REPLY
+X01F6	EQU	$-1
 	ret
-;
+
+;********************************************
+;	SUBROUTINE TO ISSUE COMMAND LIST		*
+;********************************************
+
 cmdlist:
 	xthl
-	mov		c,m
+	mov		c,m					;FETCH LENGTH OF LIST
 	inx		h
-;
 cmdlist1:
-	in		OMNISTAT			;0DBH
-X01FC	EQU	$-1					;0A1H
+	in		OMNISTAT
+X01FC	EQU	$-1
 	ani		OUTREADY
-	jnz		cmdlist1
-	mov		a,m
+	jnz		cmdlist1			;IF OMNI NOT READY TO TAKE BYTE
+	mov		a,m					;NEXT BYTE TO SEND
 	inx		h
-	out		OMNIDATA			;0D3H
-X0205	EQU	$-1					;0A0H
+	out		OMNIDATA			;BYTE TO CONTROLLER
+X0205	EQU	$-1
 	dcr		c
-	jnz		cmdlist1
+	jnz		cmdlist1			;IF MORE COMMANDS TO SEND
 	xthl
 	ret
-;
+
+;********************************************
+;	SUBROUTINE TO GET Disk Parameter Block	*
+;	<HL> = OFFSET 00,02,04,06,08,10,12		*
+;********************************************
+;	DPBTBL:	DW DRIVE00
+;			DW DRIVE01
+;			DW DRIVE02
+;			:
+;			:
+;			DW DRIVE15
+
 getdpb:
-	lxi		d,dpbtbl
+	lxi		d,DPBTBL			;Base of address table
 	dad		d
 	mov		e,m
 	inx		h
 	mov		h,m
-	mov		l,e
+	mov		l,e					;<HL> = DPB buffer
 	call	cmdlist
 	db		005H				;LENGTH
-	db		OC$TRAK				;00AH
-	db		002H
-	db		000H
-	db		OC$GDPB				;011H
-	db		OC$GENS				;016H
-	call	getdat
+	db		OC$TRAK				;Command: move to track
+	db		002H				;P1: track low
+	db		000H				;P2: track hi
+	db		OC$GDPB				;Command: get DPB
+	db		OC$GENS				;Command: get genstatus
+	call	getdat				;Read table
 	ret
-;
+
+;****************************************
+;		MAIN PROGRAM STARTS HERE		*
+;****************************************
+
 start:
 	lda		DATAPORT
 	sta		X01D9
@@ -295,16 +332,16 @@ start:
 	sta		X01F0
 	sta		X01FC
 	sta		X03E4
-	lxi		sp,stack			;SET LOCAL STACK POINTER
+	lxi		sp,STACK			;SET LOCAL STACK POINTER
 	lxi		h,signon
 	call	outmsg
 ;
 ;	CHECK FOR DEFAULT FILE LOAD INSTEAD OF GET
 ;
 	lda		fcb+1				;BLANK IF NO FILE
-	cpi	' '
+	cpi		' '
 	jz		getsys				;SKIP TO GET SYSTEM MESSAGE IF BLANK
-	lxi		d,fcb				;TRY TO OPEN IT
+	lxi		d,FCB				;TRY TO OPEN IT
 	call	open				;
 	inr		a					;255 BECOMES 00
 	jnz		rdok				;OK TO READ IF NOT 255
@@ -320,48 +357,54 @@ start:
 ;
 rdok:
 	xra		a
-	sta		fcbcr				;CURRENT RECORD = 0
+	sta		FCBCR				;CURRENT RECORD = 0
 ;
 ;	PRE-READ AREA FROM TPA TO LOADP
 ;
 	mvi		c,(LOADP-TPA)/SECSIZ	;010H
 ;	PRE-READ FILE
 prerd:
-	lxi		d,fcb				;INPUT FILE CONTROL COUNT
-	call	dread				;ASSUME SET TO DEFAULT BUFFER
+	lxi		d,FCB				;INPUT FILE CONTROL BLOCK
+	call	dread				;ASSUME SET TO DEFAULT BUFFER, READ SECTOR
 	ora		a
 	jnz		badrd				;CANNOT ENCOUNTER END-OF FILE
 	dcr		c					;COUNT DOWN
-	jnz		prerd				;FOR ANOTHER SECTOR
+	jnz		prerd				;FOR ANOTHER SECTOR WE IGNORE
 ;
-;	SECTORS SKIPPED AT BEGINNING OF FILE
+;	NOW POINTING TO BEGINNING OF OS IMAGE [BOOT CODE]
 ;
-	lxi		h,LOADP
-	call	dmadread
-	lda		records
-	mov		c,a
+	lxi		h,LOADP				;<HL> = 0900H
+	call	dmadread			;DMA ADDRESS SET & READ SECTOR WITH BOOT CODE
+	lda		RECORDS				;1ST SECTOR HAS NUMBER OF RECORDS TO READ
+	mov		c,a					;<C> = RECORD COUNT
 rdinp:
 	lxi		d,SECSIZ
 	dad		d					;HL IS NEW LOAD ADDRESS
-	lxi		d,fcb
-	call	dmadread
+	lxi		d,FCB				;READY FOR READ
+	call	dmadread			;DMA ADDRESS SET & READ SECTOR
 	ora		a
-	jnz		badrd
+	jnz		badrd				;CANNOT ENCOUNTER END-OF FILE
 	dcr		c
 	jnz		rdinp				;ASSUME EOF IF NOT ZERO
-	jmp		putsys
+	jmp		putsys				;EOF - ASK FOR DESTINATION DRIVE
 ;
-badrd:							;EOF ENCOUNTERED IN INPUT FILE
+;	EOF ENCOUNTERED IN INPUT FILE
+;
+badrd:
 	lxi		h,badfile
 	call	crmsg
-	jmp		reboot
+	jmp		reboot				;Exit SYSGEN
+;
+;	BAD DISK NAME
 ;
 badunit:
 	lxi		h,qdisk
 failmsg:
 	call	crmsg
+;	...		FALL INTO GETSYS
 ;
 ;	GET SYSTEM
+;
 getsys:
 	lxi		h,askget			;GET SYSTEM?
 	call	crmsg
@@ -369,42 +412,43 @@ getsys:
 	cpi		CR
 	jz		putsys				;SKIP IF CR ONLY
 	sta		gdisk
-	sui		'A'					;041H
+	sui		'A'					;CONVERT TO BINARY VALUE
 	cpi		NDISKS				;VALID DRIVE?
-	jnc		badunit				;TOO HIGH
-	call	sel
-	jz		failmsg
-	lxi		h,getmsg
+	jnc		badunit				;TOO HIGH, REPORT ERROR AND ASK AGAIN
+	call	sel					;TO SELECT THE DRIVE
+	jz		failmsg				;<HL>='NO DISK' MESSAGE
+	lxi		h,getmsg			;'SOURCE ON' MESSAGE
 	call	crmsg
-	call	getchar
-	cpi		CR					;00DH
-	jnz		reboot
+	call	getchar				;Get drive letter
+	cpi		CR
+	jnz		reboot				;Exit SYSGEN?
 	call	crlf
 	call	cmdlist
 data2:
 	db		003H				;LENGTH
-	db		OC$BOOT				;000H
-	db		001H
-	db		OC$GENS				;016H
-	lxi		h,LOADP1
-	call	getdat
-	ora		a
+	db		OC$BOOT				;Command: read OS
+	db		001H				;P1: #records
+	db		OC$GENS				;Command: get genstats
+	lxi		h,LOADP				;<HL> = 0900H
+	call	getdat				;Read record
+	ora		a					;Should be 0
 	lxi		h,rsysbad
-	jnz		bail
-	lda		records
-	sta		data3a
+	jnz		bail				;READ ERROR?
+	lda		RECORDS				;<A> = #RECORDS @ xx7EH
+	sta		REC
 	call	cmdlist
 	db		003H				;LENGTH
-	db		OC$BOOT				;000H
-data3a:
-	db		000H				;# RECORDS
-	db		OC$GENS				;016H
-	lxi		h,LOADP1
-	call	getdat
-	ora		a
+	db		OC$BOOT				;Command: read OS
+REC	db		000H				;P1: #records
+	db		OC$GENS				;Command: get genstatus
+	lxi		h,LOADP
+	call	getdat				;Read ALL records
+	ora		a					;Shoukld be 0
 	lxi		h,rsysbad
-	jnz		bail
-	jmp		putsys
+	jnz		bail				;READ ERROR?
+	jmp		putsys				;Good read, Ask where to PUT
+;
+;	INVALID DRIVE NAME
 ;
 diskerr:
 	lxi		h,qdisk
@@ -412,68 +456,72 @@ fail:
 	call	crmsg
 ;
 ;	PUT SYSTEM
+;
 putsys:
 	lxi		h,askput
 	call	crmsg
-	call	cpmsize
+	call	cpmsize				;Compute SIZE of OS
 	call	getchar
 	cpi		CR
-	jz		reboot
+	jz		reboot				;Exit SYSGEN?
 	sta		pdisk
-	sui		'A'
+	sui		'A'					;CONVERT TO BINARY VALUE
 	cpi		NDISKS				;VALID DRIVE?
-	jnc		diskerr				;TOO HIGH
-	call	sel
-	jz		fail
-	lxi		h,putmsg
+	jnc		diskerr				;TOO HIGH, REPORT ERROR AND ASK AGAIN
+	call	sel					;TO SELECT THE DRIVE
+	jz		fail				;<HL>='NO DISK' MESSAGE
+	lxi		h,putmsg			;'DESTINATION ON' MESSAGE
 	call	crmsg
 	call	getchar
-	cpi		CR					;00DH
-	jnz		reboot
-	call	setup
-	jnz		fail
-	call	crlf
+	cpi		CR					;REBOOT?
+	jnz		reboot				;Exit SYSGEN
+	call	setup				;Is dest empty?
+	jnz		fail				;YES...
+	call	crlf				;NO
 	call	onelist
-	db		OC$SWRT				;001H
-	lda		records
-	call	sendcmd
-	lxi		h,LOADP1
-	call	writerec
+	db		OC$SWRT				;Command: write system
+	lda		RECORDS
+	call	sendcmd				;P1: #records to write
+	lxi		h,LOADP				;<HL> = 0900H
+	call	writerec			;Write ALL records
 	call	onelist
-	db		OC$GENS				;016H
-	call	inchar
+	db		OC$GENS				;Command: get genstatus
+	call	inchar				;Should be 0
 	lxi		h,wsysbad
-	ora		a
-	jnz		fail
-	jmp		putsys
+	ora		a					;Set flags
+	jnz		fail				;WRITE ERROR?
+	jmp		putsys				;Ask for next disk
+;
+;	GET DPB OF DESTINATION DRIVE
+;	TOO CHECK IF OVERWRITING ANOTHER OS
 ;
 setup:
-	mvi		c,002H
-	lxi		h,dpb1
-	call	loaddpb
+	mvi		c,2					;<C> = TRACK#
+	lxi		h,DPB1				;<HL> = where to load DPB
+	call	loaddpb				;Read DPB from selected track#
 	lxi		h,dstnrd
-	jnz		rpterr
-	lda		records
-	mov		b,a
-	lhld	disk1
-	mov		c,l
+	jnz		rpterr				;READ ERROR?
+	lda		RECORDS
+	mov		b,a					;<B> = #records in OS
+	lhld	DISK1
+	mov		c,l					;<C> = disk size
 	mov		a,l
 	ani		0F8H				;NOT 07 1111$1000
 	ora		h
 	lxi		h,destbad
-	jnz		rpterr
+	jnz		rpterr				;Drive has OS allready?
 	ora		c
 	jz		rpterr
-	jmp		sizeit
+	jmp		sizeit				;Now check size
 ;
 willitfit:
-	lxi		h,dpb2
+	lxi		h,DPB2
 	push	b
 	call	loaddpb
 	pop		b
 	lxi		h,dstnrd
-	jnz		rpterr
-	lda		dpb2
+	jnz		rpterr				;READ ERROR?
+	lda		DPB2
 	cma
 	inr		a
 	add		b
@@ -485,39 +533,45 @@ sizeit:
 	jp		willitfit
 	lxi		h,toobig
 rpterr:
-	ora		h
+	ora		h					;<A> not 0
 	ret
 ;
 goodfit:
-	xra		a
+	xra		a					;<A> is 0
 	ret
+;
+;	READ DPB FROM TRACK <C>
 ;
 loaddpb:
 	mov		a,c
-	sta		data4a
+	sta		TRK
 	call	cmdlist
 	db		005H				;LENGTH
-	db		OC$TRAK				;00AH
-data4a:
-	db		000H
-	db		000H
-	db		OC$GDPB				;011H
-	db		OC$GENS				;016H
-	call	getdat
-	ora		a
-	rz
-	lxi		h,status
+	db		OC$TRAK				;Command: set track
+TRK	db		000H				;P1: track low
+	db		000H				;P2: track hi
+	db		OC$GDPB				;Command: read DPB
+	db		OC$GENS				;Command: get genstatus
+	call	getdat				;Get data
+	ora		a					;Should be 0
+	rz							;Good read
+;
+;	GET EXTENDED STATUS
+;
+	lxi		h,STATUS
 	call	cmdlist
 	db		002H				;LENGTH
-	db		OC$EXTS				;017H
-	db		OC$GENS				;016H
-	call	getdat
-	lda		status
-	ora		a
+	db		OC$EXTS				;Command: get extstatus
+	db		OC$GENS				;Command: get genstatus
+	call	getdat				;Get data
+	lda		STATUS
+	ora		a					;Set flags
 	ret
 ;
+;	WRITE ALL RECORDS
+;
 writerec:
-	lda		records
+	lda		RECORDS
 	mov		b,a
 writenext:
 	call	inchar
@@ -539,24 +593,28 @@ X03EC	EQU	$-1					;0A0H
 	jnz		writenext
 	ret
 ;
+;	Compute size of CP/M as decimal number
+;
 cpmsize:
 	xra		a
-	lda		records
+	lda		RECORDS
 	dcr		a
 	rar
-	adi		10					;00AH
-	mvi		l,47				;02FH
+	adi		10
+	mvi		l,'0'-1
 szloop:
 	inr		l
-	sui		10					;00AH
+	sui		10
 	jp		szloop
-	adi		58					;03AH
+	adi		'9'+1
 	mov		h,a
 	shld	sizecpm
 	ret
 ;
+;	REPORT ERROR & REBOOT
 bail:
 	call	crmsg
+;	...		FALL INTO REBOOT
 reboot:
 	lhld	sizecpm
 	mov		a,h
@@ -578,7 +636,7 @@ putmsg:	db	'DESTINATION ON '
 pdisk:	db	'?'					;FILLED IN AT PUT FUNCTION
 		db	', THEN TYPE RETURN',0
 errmsg:	db	'PERMANENT ERROR, TYPE RETURN TO IGNORE',0
-qdisk:	db	'INVALID DRIVE NAME (USE LETTER ''A'' TO ''P'')',0
+qdisk:	db	'INVALID DRIVE NAME (USE LETTER "A" TO "P")',0
 nodisk:	db	'NO DISK DEFINED FOR THAT LETTER',0
 nofile:	db	'NO SOURCE FILE ON DISK',0
 badfile:db	'SOURCE FILE INCOMPLETE',0
@@ -588,31 +646,33 @@ destbad:db	'DESTINATION DISK CAN NOT CONTAIN SYSTEM',0
 dstnrd:	db	'CAN NOT ACCESS DESTINATION DISK',0
 toobig:	db	'SYSYEM TO BIG FOR SELECTED DEVICE -- WRITE NOT ATTEMPTED',0
 savcpm:	db	'(If desired, SAVE '
-sizecpm:dw	000H				;FILLED IN AT BAIL TIME
+sizecpm:db	'??'				;FILLED IN BY CPMSIZE
 		db	' CPMxx.COM)',0
 		db	0
-sdisk:	db	0
+;
+sdisk:	db	0	;Selected disk: 00=8", 04=5.25", 08=WD, 0C=RAM
+;
 dpb1:	db	0,0,0,0
 		db	0,0,0,0
 		db	0,0,0,0
 		db	0
 disk1:	dw	0
+;
 dpb2:	db	0,0,0,0
 		db	0,0,0,0
 		db	0,0,0,0
 		db	0
 disk2:	dw	0
-status:
-	db	000H
-	db	000H
-	db	000H
-	db	000H
-	db	000H
-	db	000H
-	db	000H
-	db	000H
-	db	000H
 ;
-	DS	STACKSIZE*2
+status:	db	0,0,0,0
+		db	0,0,0,0
+		db	0
+;
+		dw	0,0,0,0,0,0,0
+;
 stack	EQU	06B2H
-	end	100h
+;
+		ORG	0900H
+LOADP	EQU	$			;LOAD POINT FOR SYSTEM DURING LOAD/STORE
+RECORDS	EQU	LOADP+7EH	;NUMBER OF RECORDS LOCATED IN BOOT CODE
+		END	TPA
