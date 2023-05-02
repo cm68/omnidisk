@@ -1081,10 +1081,8 @@ WBOOTE:
 	JMP	READ		;READ DISK
 	JMP	WRITE		;WRITE DISK
 	JMP	IOLISTST	;RETURN LIST STATUS
-;***>	JMP	SECTRAN		;SECT TRANSLATE <***
-	MOV H,B 		;REPLACE 3-BYTE JMP WITH 3-BYTE ROUTINE
- 	MOV L,C 
-	RET
+	JMP	SECTRAN		;SECT TRANSLATE
+
 ;The following are my extensions; Mainly for the hell of it.
 ;unfortunatly it won't fit in a 64k system with 5 drives.
 ;	JMP	GTIOB		;17 - GET PRESENT IO BYTE 
@@ -1575,16 +1573,13 @@ CMDINC:
 ;	SECTOR LOGICAL TO PHYSICAL TRANSLATION		*
 ;							*
 ;	TRANSLATE DELAYED UNTIL I/O DONE IN OMNIDISK	*
-;							*
-;	NOTE: THIS 3-BYTE ROUTINE REPLACES ITS JMP	*
-;	      IN THE BIOS JMP VECTOR			*
+;	RETURN WITH SECTOR FROM BC IN HL				*
 ;********************************************************
-;SECTRAN:
-;	TRANSLATE DELAYED UNTIL READ DONE IN CONTROLLER
-;	RETURN WITH SECTOR FROM BC IN HL
-;	MOV	L,C
-;	MOV	H,B
-;	RET
+
+SECTRAN:
+	MOV	L,C
+	MOV	H,B
+	RET
 
 ;********************************************************
 ;	SET DMA GIVEN BY <BC> FOR READ/WRITE BUFF	*
