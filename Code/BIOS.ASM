@@ -187,9 +187,10 @@ CMDEND:
 ; At least ONE type must be defined.
 ;
 USE$8		EQU	TRUE	;Use 8" floppy disk drives.
-USE$5		EQU	TRUE	;Use 5" floppy drives.
+USE$5		EQU	FALSE	;Use 5" floppy drives.
 QUAD$DENS	EQU	FALSE	;5" floppy drive is 80 tracks per side (96TPI)
-BOOT$8		EQU	FALSE	;Boot drive is 8" floppy
+BOOT$8		EQU	TRUE	;If USE$8 and USE$5 is TRUE,Boot drive is 8" floppy
+TRUE$8		EQU	FALSE	;If true 8" floppy drives
 
 ;
 ; Use non-standard floppy SKEY to be compatible with Morrow Floppys Disks
@@ -266,9 +267,16 @@ DMAPRI   	EQU	0Fh		;<== DMA PRIORITY
 ; OR ANY SHORTER (BOMBS THE SHURGARTS)
 WDELAY		EQU	6		;<== DELAY (IN 250MS TICKS) HOLDING WRITES
 LDELAY		EQU	20		;<== FD HEADS LOADED AFTER USE IN 250MS TICKS
+	IF	TRUE$8
 STEP8		EQU	6		;<== 8" FD STEP RATE IN MS
 LOAD8		EQU	35		;<== 8" FD HEAD LOAD TIME IN MS
 SETL8		EQU	14		;<== 8" FD HEAD SETTLE TIME IN MS (AFTER SEEK)
+	ENDIF ;TRUE$8
+	IF	NOT TRUE$8
+STEP8		EQU	6		;<== 8" FD STEP RATE IN MS
+LOAD8		EQU	8		;<== 8" FD HEAD LOAD TIME IN MS
+SETL8		EQU	0		;<== 8" FD HEAD SETTLE TIME IN MS (AFTER SEEK)
+	ENDIF ;NOT TRUE$8
 STEP5		EQU	6		;<== 5" FD STEP RATE IN MS
 LOAD5		EQU	8		;<== 5" FD HEAD LOAD TIME IN MS
 SETL5		EQU	0		;<== 5" FD HEAD SETTLE TIME IN MS (AFTER SEEK)
