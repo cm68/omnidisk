@@ -386,7 +386,7 @@ PAGE 0
 ;		SETTPI		40 28 SET TRACK DENSITY STATUS (48-96 TPI)
 ;		GETTPI		41 29 INVERSE OF ABOVE
 ;		GETVERS		42 2A RETURN VERSION TO HOST
-;		DUMPTAGS	43 ZB RETURN BUFTAGS TO HOST
+;		DUMPTAGS	43 2B RETURN BUFTAGS TO HOST
 ;
 ;		ADDITIONAL NOTES:
 ;			- 48 TPI DISKS MAY BE USED IN 96 TPI UNITS. USE FUNCTION 40 28H TO
@@ -487,17 +487,17 @@ SIM				MACRO
 				ENDM
 SIMMSK			EQU		0101$1011B			;KK DEFAULT SIM VALUE
 ;
-;				MSB														LSB
-;			+-------+-------+-------+-------+-------+-------+-------+-------+
-;SIM		|  SOB  |  USE  |  NOT  | RESET |  USE  | MASK  | MASK  | MASK  |
-;INST		|       |  SOB  | USED  |RST 7.5| MASKS | 7.5   | 6.5   | 5.5   |
-;   		+-------+-------+-------+-------+-------+-------+-------+-------+
+;              MSB                                                      LSB
+;           +-------+-------+-------+-------+-------+-------+-------+-------+
+;SIM        |  SOB  |  USE  |  NOT  | RESET |  USE  | MASK  | MASK  | MASK  |
+;INST       |       |  SOB  | USED  |RST 7.5| MASKS | 7.5   | 6.5   | 5.5   |
+;           +-------+-------+-------+-------+-------+-------+-------+-------+
 ;
-;				MSB														LSB
-;			+-------+-------+-------+-------+-------+-------+-------+-------+
-;RIM		|  SIB  |  7.5  |  6.5  |  5.5  | 0:DI  | 7.5   | 6.5   | 5.5   |
-;INST		|       |ACTIVE |ACTIVE |ACTIVE | 1:EI  |MASKED |MASKED |MASKED |
-;   		+-------+-------+-------+-------+-------+-------+-------+-------+
+;              MSB                                                      LSB
+;           +-------+-------+-------+-------+-------+-------+-------+-------+
+;RIM        |  SIB  |  7.5  |  6.5  |  5.5  | 0:DI  | 7.5   | 6.5   | 5.5   |
+;INST       |       |ACTIVE |ACTIVE |ACTIVE | 1:EI  |MASKED |MASKED |MASKED |
+;           +-------+-------+-------+-------+-------+-------+-------+-------+
 ;
 ; KK		SOB:		RESET NEC
 ;			SIB:		NEC DRQ
@@ -506,30 +506,30 @@ SIMMSK			EQU		0101$1011B			;KK DEFAULT SIM VALUE
 ;			7.5:		NEC CHIP INTERRUPT
 ;
 ;
-;				MSB														LSB
+;              MSB                                                      LSB
 ;STATUS		+-------+-------+-------+-------+-------+-------+-------+-------+
-;			|       |       |       |       | FROM  |0: ON  |0: ON  |  TO   |
-;4018H		|       |       |       |       | HOST  |1: OFF |1: OFF | HOST  |
-;1/O 58		+-------+-------+-------+-------+-------+-------+-------+-------+
+;           |       |       |       |       | FROM  |0: ON  |0: ON  |  TO   |
+;4018H      |       |       |       |       | HOST  |1: OFF |1: OFF | HOST  |
+;1/O 58	    +-------+-------+-------+-------+-------+-------+-------+-------+
 ;                                                   | SW 6    SW 4  |
 ;       FROM HOST             TO HOST               |  SWITCH S1    |
 ;       0: DATA NOT READY     0: OK TO SEND         +---------------+
 ;       1: DATA READY         1: HOST HAS NOT
 ;                                TAKEN OUR LAST BYTE
 ;
-;LOCAL			MSB														LSB
-;CONTROL	+-------+-------+-------+-------+-------+-------+-------+-------+
-;			| DMA   | HEAD  | 0: 8" |       |       |4-BIT S100 DMA PRIORITY|
-;C006H		|DIREC'N| LOAD  | 1: 5" |       |       |                       |
-;1/O C6		+-------+-------+-------+-------+-------+-------+-------+-------+
+;LOCAL          MSB                                                     LSB
+;CONTROL    +-------+-------+-------+-------+-------+-------+-------+-------+
+;           | DMA   | HEAD  | 0: 8" |       |       |4-BIT S100 DMA PRIORITY|
+;C006H      |DIREC'N| LOAD  | 1: 5" |       |       |                       |
+;1/O C6     +-------+-------+-------+-------+-------+-------+-------+-------+
 ;
 ;
 ;
-;S100			MSB														LSB
-;CONTROL	+-------+-------+-------+-------+-------+-------+-------+-------+
-;			|       |       |       |       |       |       |       |       |
-;C007H		|       |       |       |       |       |       |       |       |
-;1/O C7		+-------+-------+-------+-------+-------+-------+-------+-------+
+;S100           MSB                                                     LSB
+;CONTROL    +-------+-------+-------+-------+-------+-------+-------+-------+
+;           |       |       |       |       |       |       |       |       |
+;C007H      |       |       |       |       |       |       |       |       |
+;1/O C7     +-------+-------+-------+-------+-------+-------+-------+-------+
 ;
 ;
 ;				HARDWARE EQUATES
@@ -1170,7 +1170,7 @@ INDIVSTEP2:
 ; Parameters:
 ;	P1 = byte:	Write hold delay in 250ms ticks, 1=255ms.
 ;	P2 = byte:	Head unload delay in 250ms ticks.
-;	P3 = byte:	8" floppy step rate in ms, 1=16 ms.
+;	P3 = byte:	8" floppy step rate in ms, 1-16ms.
 ;	P4 = byte:	5" floppy step rate in ms, 2-32ms.
 ;	P5 = byte:	8" floppy head load time in ms, 0-255ms.
 ;	P6 = byte:	5" floppy head load time in ms, 0-255ms.
@@ -6090,8 +6090,10 @@ MD$OSB:			DS		25					;OS BLOCK (DPB OR EQUIV) AS SENT FROM HOST
 ; FPYTAB DEFINED
 ;
 ;FLAGS:			DS		1					;XXXX XXXX
-;											;^     ^
-;											;|     \-- DOUBLE SIDED
+;											;^ ^^  ^
+;											;| ||  \-- DOUBLE SIDED
+;											;| |\----- Double-Step (48TPI in 96TPI DRIVE)
+;											;| \------ 96TPI
 ;											;\-------- ACTIVE
 ;FDRELPOS:		DS		1					;RELITIVE POSITION IN FDRELPOS
 ;SECTOFF:		DS		2					;SECTOR OFFSET FOR SIDE 0, SIDE 1
